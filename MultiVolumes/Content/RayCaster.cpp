@@ -375,7 +375,7 @@ bool RayCaster::createVolumeInfoBuffers(CommandList* pCommandList, uint32_t numV
 		m_visibleVolumeCounter = RawBuffer::MakeShared();
 		N_RETURN(m_visibleVolumeCounter->Create(m_device.get(), sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::DENY_SHADER_RESOURCE,
-			MemoryType::DEFAULT, 0, nullptr, 1, nullptr, L"RayCaster.VisibleVolumeCounter"), false);
+			MemoryType::DEFAULT, 0, nullptr, 0, nullptr, L"RayCaster.VisibleVolumeCounter"), false);
 
 		m_visibleVolumes = StructuredBuffer::MakeUnique();
 		m_visibleVolumes->SetCounter(m_visibleVolumeCounter);
@@ -384,8 +384,9 @@ bool RayCaster::createVolumeInfoBuffers(CommandList* pCommandList, uint32_t numV
 			1, nullptr, L"RayCaster.VisibleVolumes"), false);
 
 		m_counterReset = StructuredBuffer::MakeUnique();
-		N_RETURN(m_counterReset->Create(m_device.get(), 1, sizeof(uint32_t), ResourceFlag::NONE,
-			MemoryType::DEFAULT, 1, nullptr, 1, nullptr, L"RayCaster.CounterReset"), false);
+		N_RETURN(m_counterReset->Create(m_device.get(), 1, sizeof(uint32_t),
+			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
+			0, nullptr, L"RayCaster.CounterReset"), false);
 
 		m_volumeDispatchArg = RawBuffer::MakeUnique();
 		N_RETURN(m_volumeDispatchArg->Create(m_device.get(), sizeof(uint32_t[3]),
@@ -742,9 +743,11 @@ void RayCaster::cullVolumes(const CommandList* pCommandList, uint8_t frameIndex)
 void RayCaster::rayMarchV(const CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
-	auto numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE);
-	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 3);
+	auto numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE);
+	numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE |
+		ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
