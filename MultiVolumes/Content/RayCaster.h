@@ -26,7 +26,7 @@ public:
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, DirectX::CXMMATRIX shadowVP, const DirectX::XMFLOAT3& eyePt);
-	void Render(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void Render(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const XUSG::DescriptorTable& GetLightSRVTable() const;
@@ -80,10 +80,11 @@ protected:
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createPipelineLayouts();
 	bool createPipelines(XUSG::Format rtFormat);
+	bool createCommandLayout();
 	bool createDescriptorTables();
 
 	void cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void rayMarchV(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	XUSG::Device::sptr m_device;
@@ -96,6 +97,7 @@ protected:
 
 	XUSG::PipelineLayout	m_pipelineLayouts[NUM_PIPELINE];
 	XUSG::Pipeline			m_pipelines[NUM_PIPELINE];
+	XUSG::CommandLayout::uptr m_commandLayout;
 
 	std::vector<XUSG::DescriptorTable> m_uavInitTables;
 	std::vector<XUSG::DescriptorTable> m_srvMipTables;

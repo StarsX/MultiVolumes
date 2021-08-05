@@ -135,6 +135,9 @@ bool RayCaster::Init(CommandList* pCommandList, const DescriptorTableCache::sptr
 	// Create pipelines
 	N_RETURN(createPipelineLayouts(), false);
 	N_RETURN(createPipelines(rtFormat), false);
+
+	// create command layout
+	N_RETURN(createCommandLayout(), false);
 	N_RETURN(createDescriptorTables(), false);
 
 	return true;
@@ -289,7 +292,7 @@ void RayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATRIX sh
 	}
 }
 
-void RayCaster::Render(const CommandList* pCommandList, uint8_t frameIndex)
+void RayCaster::Render(CommandList* pCommandList, uint8_t frameIndex)
 {
 	static auto isFirstFrame = true;
 
@@ -570,6 +573,15 @@ bool RayCaster::createPipelines(Format rtFormat)
 	return true;
 }
 
+bool RayCaster::createCommandLayout()
+{
+	IndirectArgument arg;
+	arg.Type = IndirectArgumentType::DISPATCH;
+	m_commandLayout = CommandLayout::MakeUnique();
+
+	return m_commandLayout->Create(m_device.get(), sizeof(uint32_t[3]), 1, &arg);
+}
+
 bool RayCaster::createDescriptorTables()
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
@@ -712,16 +724,16 @@ bool RayCaster::createDescriptorTables()
 void RayCaster::cullVolumes(const CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	ResourceBarrier barriers[3];
+	ResourceBarrier barriers[2];
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_DEST);
-	pCommandList->Barrier(numBarriers, barriers);
+	//pCommandList->Barrier(numBarriers, barriers); // Promotion
 
 	// Reset counter
 	pCommandList->CopyResource(m_visibleVolumeCounter.get(), m_counterReset.get());
 
 	// Set barriers
 	numBarriers = m_visibleVolumes->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS, numBarriers);
+	//numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS, numBarriers);
 	numBarriers = m_volumeVis->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
@@ -740,10 +752,10 @@ void RayCaster::cullVolumes(const CommandList* pCommandList, uint8_t frameIndex)
 	pCommandList->Dispatch(DIV_UP(numVolumes, 4), 1, 1);
 }
 
-void RayCaster::rayMarchV(const CommandList* pCommandList, uint8_t frameIndex)
+void RayCaster::rayMarchV(CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 3);
+	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 4);
 	auto numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE);
 	numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE |
@@ -752,7 +764,11 @@ void RayCaster::rayMarchV(const CommandList* pCommandList, uint8_t frameIndex)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
+	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_SOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
+
+	// Copy counter to dispatch arg.z
+	pCommandList->CopyBufferRegion(m_volumeDispatchArg.get(), sizeof(uint32_t[2]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_V]);
@@ -768,7 +784,7 @@ void RayCaster::rayMarchV(const CommandList* pCommandList, uint8_t frameIndex)
 	pCommandList->SetComputeDescriptorTable(6, m_samplerTable);
 
 	// Dispatch cube
-	pCommandList->Dispatch(DIV_UP(m_gridSize, 8), DIV_UP(m_gridSize, 4), 1);
+	pCommandList->ExecuteIndirect(m_commandLayout.get(), 1, m_volumeDispatchArg.get());
 }
 
 void RayCaster::renderCube(const CommandList* pCommandList, uint8_t frameIndex)
