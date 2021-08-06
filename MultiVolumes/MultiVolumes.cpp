@@ -14,6 +14,7 @@
 
 using namespace std;
 using namespace XUSG;
+using namespace XUSG::RayTracing;
 
 enum RenderMethod
 {
@@ -90,13 +91,17 @@ void VolumeRender::LoadPipeline()
 	DXGI_ADAPTER_DESC1 dxgiAdapterDesc;
 	com_ptr<IDXGIAdapter1> dxgiAdapter;
 	auto hr = DXGI_ERROR_UNSUPPORTED;
+	//const auto createDeviceFlags = EnableRootDescriptorsInShaderRecords;
+	const auto createDeviceFlags = 0;
 	for (auto i = 0u; hr == DXGI_ERROR_UNSUPPORTED; ++i)
 	{
 		dxgiAdapter = nullptr;
 		ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
+		EnableDirectXRaytracing(dxgiAdapter.get());
 
-		m_device = Device::MakeShared();
+		m_device = RayTracing::Device::MakeShared();
 		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
+		N_RETURN(m_device->CreateInterface(createDeviceFlags), ThrowIfFailed(E_FAIL));
 	}
 
 	dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
@@ -131,13 +136,16 @@ void VolumeRender::LoadPipeline()
 void VolumeRender::LoadAssets()
 {
 	// Create the command list.
-	m_commandList = CommandList::MakeUnique();
+	m_commandList = RayTracing::CommandList::MakeUnique();
 	const auto pCommandList = m_commandList.get();
 	N_RETURN(pCommandList->Create(m_device.get(), 0, CommandListType::DIRECT,
 		m_commandAllocators[m_frameIndex].get(), nullptr), ThrowIfFailed(E_FAIL));
 
+	// Create ray tracing interfaces
+	N_RETURN(m_commandList->CreateInterface(m_device.get()), ThrowIfFailed(E_FAIL));
+
 	vector<Resource::uptr> uploaders(0);
-	//m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 51, 0);
+	//m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 100, 0);
 	m_objectRenderer = make_unique<ObjectRenderer>(m_device);
 	if (!m_objectRenderer) ThrowIfFailed(E_FAIL);
 	if (!m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
@@ -147,10 +155,11 @@ void VolumeRender::LoadAssets()
 	const auto numVolumes = 1u;
 	const auto numVolumeSrcs = 1u;
 
+	GeometryBuffer geometry;
 	m_rayCaster = make_unique<RayCaster>(m_device);
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat,
-		m_gridSize, numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders))
+		m_gridSize, numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
 		ThrowIfFailed(E_FAIL);
 
 	if (m_volumeFile.empty())
@@ -583,4 +592,56 @@ double VolumeRender::CalculateFrameStats(float* pTimeStep)
 	previousTime = totalTime;
 
 	return totalTime;
+}
+
+//--------------------------------------------------------------------------------------
+// Ray tracing
+//--------------------------------------------------------------------------------------
+
+// Enable experimental features required for compute-based raytracing fallback.
+// This will set active D3D12 devices to DEVICE_REMOVED state.
+// Returns bool whether the call succeeded and the device supports the feature.
+inline bool EnableComputeRaytracingFallback(IDXGIAdapter1* adapter)
+{
+	ComPtr<ID3D12Device> testDevice;
+	UUID experimentalFeatures[] = { D3D12ExperimentalShaderModels };
+
+	return SUCCEEDED(D3D12EnableExperimentalFeatures(1, experimentalFeatures, nullptr, nullptr))
+		&& SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)));
+}
+
+// Returns bool whether the device supports DirectX Raytracing tier.
+inline bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
+{
+	ComPtr<ID3D12Device> testDevice;
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureSupportData = {};
+
+	return SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)))
+		&& SUCCEEDED(testDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData)))
+		&& featureSupportData.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
+}
+
+void VolumeRender::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
+{
+	// Fallback Layer uses an experimental feature and needs to be enabled before creating a D3D12 device.
+	bool isFallbackSupported = EnableComputeRaytracingFallback(adapter);
+
+	if (!isFallbackSupported)
+	{
+		OutputDebugString(
+			L"Warning: Could not enable Compute Raytracing Fallback (D3D12EnableExperimentalFeatures() failed).\n" \
+			L"         Possible reasons: your OS is not in developer mode.\n\n");
+	}
+
+	m_isDxrSupported = IsDirectXRaytracingSupported(adapter);
+
+	if (!m_isDxrSupported)
+	{
+		OutputDebugString(L"Warning: DirectX Raytracing is not supported by your GPU and driver.\n\n");
+
+		if (!isFallbackSupported)
+			OutputDebugString(L"Could not enable compute based fallback raytracing support (D3D12EnableExperimentalFeatures() failed).\n"\
+				L"Possible reasons: your OS is not in developer mode.\n\n");
+		ThrowIfFailed(isFallbackSupported ? S_OK : E_FAIL);
+	}
 }

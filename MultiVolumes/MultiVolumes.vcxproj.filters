@@ -40,6 +40,12 @@
     <Filter Include="XUSG\Optional">
       <UniqueIdentifier>{f0f25b24-b3cf-41e6-b367-1cab524f2301}</UniqueIdentifier>
     </Filter>
+    <Filter Include="XUSG\RayTracing">
+      <UniqueIdentifier>{89818e1e-b1a8-4b53-8cad-973716f7e9c3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\VolumeData">
+      <UniqueIdentifier>{0bbf5cde-5c5e-440d-b63c-8a2aa010497d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common\d3dx12.h">
@@ -87,6 +93,15 @@
     <ClInclude Include="Content\SharedConsts.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="XUSG\RayTracing\XUSGRayTracing.h">
+      <Filter>XUSG\RayTracing</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\D3D12RaytracingFallback.h">
+      <Filter>Common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Common\D3D12RaytracingHelpers.hpp">
+      <Filter>Common\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common\DXFramework.cpp">
@@ -132,9 +147,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Content\Shaders\CSInitGridData.hlsl">
-      <Filter>Shaders\RayCaster</Filter>
-    </FxCompile>
     <FxCompile Include="Content\Shaders\CSRayMarchL.hlsl">
       <Filter>Shaders\RayCaster</Filter>
     </FxCompile>
@@ -143,9 +155,6 @@
     </FxCompile>
     <FxCompile Include="Content\Shaders\VSScreenQuad.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Content\Shaders\CSR32FToRGBA16F.hlsl">
-      <Filter>Shaders\RayCaster</Filter>
     </FxCompile>
     <FxCompile Include="Content\Shaders\VSBasePass.hlsl">
       <Filter>Shaders</Filter>
@@ -165,5 +174,16 @@
     <FxCompile Include="Content\Shaders\CSVolumeCull.hlsl">
       <Filter>Shaders\RayCaster</Filter>
     </FxCompile>
+    <FxCompile Include="Content\Shaders\CSInitGridData.hlsl">
+      <Filter>Shaders\VolumeData</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\CSR32FToRGBA16F.hlsl">
+      <Filter>Shaders\VolumeData</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="Content\Shaders\RayTracing.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

@@ -6,16 +6,18 @@
 
 #include "DXFramework.h"
 #include "Core/XUSG.h"
+#include "RayTracing/XUSGRayTracing.h"
 
 class RayCaster
 {
 public:
-	RayCaster(const XUSG::Device::sptr& device);
+	RayCaster(const XUSG::RayTracing::Device::sptr& device);
 	virtual ~RayCaster();
 
-	bool Init(XUSG::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
+	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
 		XUSG::Format rtFormat, uint32_t gridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
-		const XUSG::DepthStencil::uptr* depths, std::vector<XUSG::Resource::uptr>& uploaders);
+		const XUSG::DepthStencil::uptr* depths, std::vector<XUSG::Resource::uptr>& uploaders,
+		XUSG::RayTracing::GeometryBuffer* pGeometry);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool SetDepthMaps(const XUSG::DepthStencil::uptr* depths);
@@ -43,6 +45,7 @@ protected:
 		RAY_MARCH_L,
 		RAY_MARCH_V,
 		RENDER_CUBE,
+		RAY_TRACING,
 
 		NUM_PIPELINE
 	};
@@ -82,14 +85,32 @@ protected:
 	bool createPipelines(XUSG::Format rtFormat);
 	bool createCommandLayout();
 	bool createDescriptorTables();
+	bool buildAccelerationStructures(const XUSG::RayTracing::CommandList* pCommandList,
+		XUSG::RayTracing::GeometryBuffer* pGeometries);
+	bool buildShaderTables();
 
 	void cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
-	XUSG::Device::sptr m_device;
+	XUSG::RayTracing::Device::sptr m_device;
+
+	XUSG::RayTracing::BottomLevelAS::uptr m_bottomLevelAS;
+	XUSG::RayTracing::TopLevelAS::uptr m_topLevelAS;
+
+	XUSG::VertexBuffer::uptr m_vertexBuffer;
+
+	// Shader tables
+	static const wchar_t* HitGroupName;
+	static const wchar_t* RaygenShaderName;
+	static const wchar_t* ClosestHitShaderName;
+	static const wchar_t* MissShaderName;
+	XUSG::RayTracing::ShaderTable::uptr	m_missShaderTable;
+	XUSG::RayTracing::ShaderTable::uptr	m_hitGroupShaderTable;
+	XUSG::RayTracing::ShaderTable::uptr	m_rayGenShaderTable;
 
 	XUSG::ShaderPool::uptr				m_shaderPool;
+	XUSG::RayTracing::PipelineCache::uptr m_rayTracingPipelineCache;
 	XUSG::Graphics::PipelineCache::uptr	m_graphicsPipelineCache;
 	XUSG::Compute::PipelineCache::uptr	m_computePipelineCache;
 	XUSG::PipelineLayoutCache::uptr		m_pipelineLayoutCache;
@@ -119,10 +140,14 @@ protected:
 	XUSG::StructuredBuffer::uptr m_visibleVolumes;
 	XUSG::StructuredBuffer::uptr m_counterReset;
 	XUSG::RawBuffer::uptr		m_volumeDispatchArg;
+	XUSG::RawBuffer::uptr		m_volumeDrawArg;
 	XUSG::RawBuffer::sptr		m_visibleVolumeCounter;
 	XUSG::TypedBuffer::uptr		m_volumeVis;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
+
+	XUSG::Resource::uptr		m_scratch;
+	XUSG::Resource::uptr		m_instances;
 
 	uint32_t				m_gridSize;
 	uint32_t				m_lightGridSize;

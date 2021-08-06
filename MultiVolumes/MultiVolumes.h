@@ -57,9 +57,11 @@ private:
 	XUSG::CommandAllocator::uptr	m_commandAllocators[FrameCount];
 	XUSG::CommandQueue::uptr		m_commandQueue;
 
-	XUSG::Device::sptr			m_device;
-	XUSG::RenderTarget::uptr	m_renderTargets[FrameCount];
-	XUSG::CommandList::uptr		m_commandList;
+	bool m_isDxrSupported;
+
+	XUSG::RayTracing::Device::sptr	m_device;
+	XUSG::RenderTarget::uptr		m_renderTargets[FrameCount];
+	XUSG::RayTracing::CommandList::uptr m_commandList;
 
 	// App resources
 	std::unique_ptr<RayCaster>	m_rayCaster;
@@ -98,4 +100,7 @@ private:
 	void WaitForGpu();
 	void MoveToNextFrame();
 	double CalculateFrameStats(float* fTimeStep = nullptr);
+
+	// Ray tracing
+	void EnableDirectXRaytracing(IDXGIAdapter1* adapter);
 };
