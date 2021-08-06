@@ -32,7 +32,7 @@ RenderMethod g_renderMethod = RAY_MARCH_SEPARATE;
 const auto g_rtFormat = Format::B8G8R8A8_UNORM;
 const auto g_dsFormat = Format::D32_FLOAT;
 
-VolumeRender::VolumeRender(uint32_t width, uint32_t height, std::wstring name) :
+MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
 	m_showFPS(true),
@@ -52,21 +52,21 @@ VolumeRender::VolumeRender(uint32_t width, uint32_t height, std::wstring name) :
 #endif
 }
 
-VolumeRender::~VolumeRender()
+MultiVolumes::~MultiVolumes()
 {
 #if defined (_DEBUG)
 	FreeConsole();
 #endif
 }
 
-void VolumeRender::OnInit()
+void MultiVolumes::OnInit()
 {
 	LoadPipeline();
 	LoadAssets();
 }
 
 // Load the rendering pipeline dependencies.
-void VolumeRender::LoadPipeline()
+void MultiVolumes::LoadPipeline()
 {
 	auto dxgiFactoryFlags = 0u;
 
@@ -133,7 +133,7 @@ void VolumeRender::LoadPipeline()
 }
 
 // Load the sample assets.
-void VolumeRender::LoadAssets()
+void MultiVolumes::LoadAssets()
 {
 	// Create the command list.
 	m_commandList = RayTracing::CommandList::MakeUnique();
@@ -156,7 +156,7 @@ void VolumeRender::LoadAssets()
 	const auto numVolumeSrcs = 1u;
 
 	GeometryBuffer geometry;
-	m_rayCaster = make_unique<RayCaster>(m_device);
+	m_rayCaster = make_unique<MultiRayCaster>(m_device);
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat,
 		m_gridSize, numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
@@ -217,7 +217,7 @@ void VolumeRender::LoadAssets()
 	}
 }
 
-void VolumeRender::CreateSwapchain()
+void MultiVolumes::CreateSwapchain()
 {
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
@@ -228,7 +228,7 @@ void VolumeRender::CreateSwapchain()
 	ThrowIfFailed(m_factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
 }
 
-void VolumeRender::CreateResources()
+void MultiVolumes::CreateResources()
 {
 	// Obtain the back buffers for this window which will be the final render targets
 	// and create render target views for each of them.
@@ -247,7 +247,7 @@ void VolumeRender::CreateResources()
 }
 
 // Update frame-based values.
-void VolumeRender::OnUpdate()
+void MultiVolumes::OnUpdate()
 {
 	// Timer
 	static auto time = 0.0, pauseTime = 0.0;
@@ -269,7 +269,7 @@ void VolumeRender::OnUpdate()
 }
 
 // Render the scene.
-void VolumeRender::OnRender()
+void MultiVolumes::OnRender()
 {
 	// Record all the commands we need to render the scene into the command list.
 	PopulateCommandList();
@@ -283,7 +283,7 @@ void VolumeRender::OnRender()
 	MoveToNextFrame();
 }
 
-void VolumeRender::OnDestroy()
+void MultiVolumes::OnDestroy()
 {
 	// Ensure that the GPU is no longer referencing resources that are about to be
 	// cleaned up by the destructor.
@@ -292,7 +292,7 @@ void VolumeRender::OnDestroy()
 	CloseHandle(m_fenceEvent);
 }
 
-void VolumeRender::OnWindowSizeChanged(int width, int height)
+void MultiVolumes::OnWindowSizeChanged(int width, int height)
 {
 	if (!Win32Application::GetHwnd())
 	{
@@ -357,7 +357,7 @@ void VolumeRender::OnWindowSizeChanged(int width, int height)
 }
 
 // User hot-key interactions.
-void VolumeRender::OnKeyUp(uint8_t key)
+void MultiVolumes::OnKeyUp(uint8_t key)
 {
 	switch (key)
 	{
@@ -377,18 +377,18 @@ void VolumeRender::OnKeyUp(uint8_t key)
 }
 
 // User camera interactions.
-void VolumeRender::OnLButtonDown(float posX, float posY)
+void MultiVolumes::OnLButtonDown(float posX, float posY)
 {
 	m_tracking = true;
 	m_mousePt = XMFLOAT2(posX, posY);
 }
 
-void VolumeRender::OnLButtonUp(float posX, float posY)
+void MultiVolumes::OnLButtonUp(float posX, float posY)
 {
 	m_tracking = false;
 }
 
-void VolumeRender::OnMouseMove(float posX, float posY)
+void MultiVolumes::OnMouseMove(float posX, float posY)
 {
 	if (m_tracking)
 	{
@@ -417,7 +417,7 @@ void VolumeRender::OnMouseMove(float posX, float posY)
 	}
 }
 
-void VolumeRender::OnMouseWheel(float deltaZ, float posX, float posY)
+void MultiVolumes::OnMouseWheel(float deltaZ, float posX, float posY)
 {
 	const auto focusPt = XMLoadFloat3(&m_focusPt);
 	auto eyePt = XMLoadFloat3(&m_eyePt);
@@ -433,12 +433,12 @@ void VolumeRender::OnMouseWheel(float deltaZ, float posX, float posY)
 	XMStoreFloat4x4(&m_view, view);
 }
 
-void VolumeRender::OnMouseLeave()
+void MultiVolumes::OnMouseLeave()
 {
 	m_tracking = false;
 }
 
-void VolumeRender::ParseCommandLineArgs(wchar_t* argv[], int argc)
+void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 {
 	DXFramework::ParseCommandLineArgs(argv, argc);
 
@@ -455,7 +455,7 @@ void VolumeRender::ParseCommandLineArgs(wchar_t* argv[], int argc)
 	}
 }
 
-void VolumeRender::PopulateCommandList()
+void MultiVolumes::PopulateCommandList()
 {
 	// Command list allocators can only be reset when the associated 
 	// command lists have finished execution on the GPU; apps should use 
@@ -511,7 +511,7 @@ void VolumeRender::PopulateCommandList()
 }
 
 // Wait for pending GPU work to complete.
-void VolumeRender::WaitForGpu()
+void MultiVolumes::WaitForGpu()
 {
 	// Schedule a Signal command in the queue.
 	N_RETURN(m_commandQueue->Signal(m_fence.get(), m_fenceValues[m_frameIndex]), ThrowIfFailed(E_FAIL));
@@ -525,7 +525,7 @@ void VolumeRender::WaitForGpu()
 }
 
 // Prepare to render the next frame.
-void VolumeRender::MoveToNextFrame()
+void MultiVolumes::MoveToNextFrame()
 {
 	// Schedule a Signal command in the queue.
 	const auto currentFenceValue = m_fenceValues[m_frameIndex];
@@ -545,7 +545,7 @@ void VolumeRender::MoveToNextFrame()
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
 
-double VolumeRender::CalculateFrameStats(float* pTimeStep)
+double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 {
 	static int frameCnt = 0;
 	static double elapsedTime = 0.0;
@@ -621,7 +621,7 @@ inline bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
 		&& featureSupportData.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
 }
 
-void VolumeRender::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
+void MultiVolumes::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
 {
 	// Fallback Layer uses an experimental feature and needs to be enabled before creating a D3D12 device.
 	bool isFallbackSupported = EnableComputeRaytracingFallback(adapter);

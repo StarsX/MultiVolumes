@@ -12,7 +12,7 @@
 #pragma once
 
 #include "StepTimer.h"
-#include "RayCaster.h"
+#include "MultiRayCaster.h"
 #include "ObjectRenderer.h"
 
 using namespace DirectX;
@@ -23,11 +23,11 @@ using namespace DirectX;
 // referenced by the GPU.
 // An example of this can be found in the class method: OnDestroy().
 
-class VolumeRender : public DXFramework
+class MultiVolumes : public DXFramework
 {
 public:
-	VolumeRender(uint32_t width, uint32_t height, std::wstring name);
-	virtual ~VolumeRender();
+	MultiVolumes(uint32_t width, uint32_t height, std::wstring name);
+	virtual ~MultiVolumes();
 
 	virtual void OnInit();
 	virtual void OnUpdate();
@@ -46,7 +46,7 @@ public:
 	virtual void ParseCommandLineArgs(wchar_t* argv[], int argc);
 
 private:
-	static const auto FrameCount = RayCaster::FrameCount;
+	static const auto FrameCount = MultiRayCaster::FrameCount;
 	static_assert(FrameCount == ObjectRenderer::FrameCount, "VolumeRender::FrameCount should be equal to ObjectRenderer::FrameCount");
 
 	XUSG::com_ptr<IDXGIFactory4> m_factory;
@@ -64,7 +64,7 @@ private:
 	XUSG::RayTracing::CommandList::uptr m_commandList;
 
 	// App resources
-	std::unique_ptr<RayCaster>	m_rayCaster;
+	std::unique_ptr<MultiRayCaster>	m_rayCaster;
 	std::unique_ptr<ObjectRenderer> m_objectRenderer;
 	XMFLOAT4X4	m_proj;
 	XMFLOAT4X4	m_view;

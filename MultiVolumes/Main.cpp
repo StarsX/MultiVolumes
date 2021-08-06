@@ -14,7 +14,7 @@
 _Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
-	VolumeRender volumeRender(1280, 800, L"Multiple volume rendering");
+	MultiVolumes multiVolumes(1280, 800, L"Multiple volume rendering");
 
-	return Win32Application::Run(&volumeRender, hInstance, nCmdShow);
+	return Win32Application::Run(&multiVolumes, hInstance, nCmdShow);
 }

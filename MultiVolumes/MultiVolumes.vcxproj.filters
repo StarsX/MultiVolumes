@@ -72,7 +72,7 @@
     <ClInclude Include="MultiVolumes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Content\RayCaster.h">
+    <ClInclude Include="Content\MultiRayCaster.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="XUSG\Advanced\XUSGDDSLoader.h">
@@ -119,7 +119,7 @@
     <ClCompile Include="MultiVolumes.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Content\RayCaster.cpp">
+    <ClCompile Include="Content\MultiRayCaster.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Content\ObjectRenderer.cpp">

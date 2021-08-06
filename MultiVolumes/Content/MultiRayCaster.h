@@ -8,11 +8,11 @@
 #include "Core/XUSG.h"
 #include "RayTracing/XUSGRayTracing.h"
 
-class RayCaster
+class MultiRayCaster
 {
 public:
-	RayCaster(const XUSG::RayTracing::Device::sptr& device);
-	virtual ~RayCaster();
+	MultiRayCaster(const XUSG::RayTracing::Device::sptr& device);
+	virtual ~MultiRayCaster();
 
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
 		XUSG::Format rtFormat, uint32_t gridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,

@@ -3,7 +3,7 @@
 //--------------------------------------------------------------------------------------
 
 #include "SharedConsts.h"
-#include "RayCaster.h"
+#include "MultiRayCaster.h"
 #define _INDEPENDENT_DDS_LOADER_
 #include "Advanced/XUSGDDSLoader.h"
 #undef _INDEPENDENT_DDS_LOADER_
@@ -16,10 +16,10 @@ using namespace DirectX;
 using namespace XUSG;
 using namespace XUSG::RayTracing;
 
-const wchar_t* RayCaster::HitGroupName = L"hitGroup";
-const wchar_t* RayCaster::RaygenShaderName = L"raygenMain";
-const wchar_t* RayCaster::ClosestHitShaderName = L"closestHitMain";
-const wchar_t* RayCaster::MissShaderName = L"missMain";
+const wchar_t* MultiRayCaster::HitGroupName = L"hitGroup";
+const wchar_t* MultiRayCaster::RaygenShaderName = L"raygenMain";
+const wchar_t* MultiRayCaster::ClosestHitShaderName = L"closestHitMain";
+const wchar_t* MultiRayCaster::MissShaderName = L"missMain";
 
 struct CBPerFrame
 {
@@ -70,7 +70,7 @@ struct VisibleVolume
 
 const uint8_t g_numCubeMips = NUM_CUBE_MIP;
 
-RayCaster::RayCaster(const RayTracing::Device::sptr& device) :
+MultiRayCaster::MultiRayCaster(const RayTracing::Device::sptr& device) :
 	m_device(device),
 	m_instances(),
 	m_lightPt(75.0f, 75.0f, -75.0f),
@@ -89,11 +89,11 @@ RayCaster::RayCaster(const RayTracing::Device::sptr& device) :
 	AccelerationStructure::SetUAVCount(2);
 }
 
-RayCaster::~RayCaster()
+MultiRayCaster::~MultiRayCaster()
 {
 }
 
-bool RayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
+bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
 	Format rtFormat, uint32_t gridSize, uint32_t numVolumes, uint32_t numVolumeSrcs, const DepthStencil::uptr* depths,
 	vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
 {
@@ -161,7 +161,7 @@ bool RayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTabl
 	return true;
 }
 
-bool RayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i, const wchar_t* fileName, vector<Resource::uptr>& uploaders)
+bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i, const wchar_t* fileName, vector<Resource::uptr>& uploaders)
 {
 	// Load input image
 	{
@@ -204,14 +204,14 @@ bool RayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i, cons
 	return true;
 }
 
-bool RayCaster::SetDepthMaps(const DepthStencil::uptr* depths)
+bool MultiRayCaster::SetDepthMaps(const DepthStencil::uptr* depths)
 {
 	m_pDepths = depths;
 
 	return createDescriptorTables();
 }
 
-void RayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
+void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
 {
 	ResourceBarrier barrier;
 	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
@@ -231,7 +231,7 @@ void RayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i
 	pCommandList->Dispatch(DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4));
 }
 
-void RayCaster::SetVolumeWorld(float size, const DirectX::XMFLOAT3& pos)
+void MultiRayCaster::SetVolumeWorld(float size, const DirectX::XMFLOAT3& pos)
 {
 	size *= 0.5f;
 	auto world = XMMatrixScaling(size, size, size);
@@ -239,7 +239,7 @@ void RayCaster::SetVolumeWorld(float size, const DirectX::XMFLOAT3& pos)
 	XMStoreFloat3x4(&m_volumeWorld, world);
 }
 
-void RayCaster::SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos)
+void MultiRayCaster::SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos)
 {
 	size *= 0.5f;
 	auto world = XMMatrixScaling(size, size, size);
@@ -247,18 +247,18 @@ void RayCaster::SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos)
 	XMStoreFloat3x4(&m_lightMapWorld, world);
 }
 
-void RayCaster::SetLight(const XMFLOAT3& pos, const XMFLOAT3& color, float intensity)
+void MultiRayCaster::SetLight(const XMFLOAT3& pos, const XMFLOAT3& color, float intensity)
 {
 	m_lightPt = pos;
 	m_lightColor = XMFLOAT4(color.x, color.y, color.z, intensity);
 }
 
-void RayCaster::SetAmbient(const XMFLOAT3& color, float intensity)
+void MultiRayCaster::SetAmbient(const XMFLOAT3& color, float intensity)
 {
 	m_ambient = XMFLOAT4(color.x, color.y, color.z, intensity);
 }
 
-void RayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATRIX shadowVP, const XMFLOAT3& eyePt)
+void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATRIX shadowVP, const XMFLOAT3& eyePt)
 {
 	const auto& depth = m_pDepths[DEPTH_MAP];
 	const auto width = static_cast<float>(depth->GetWidth());
@@ -310,7 +310,7 @@ void RayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATRIX sh
 	}
 }
 
-void RayCaster::Render(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::Render(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	static auto isFirstFrame = true;
 
@@ -326,7 +326,7 @@ void RayCaster::Render(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 	renderCube(pCommandList, frameIndex);
 }
 
-void RayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
 	ResourceBarrier barrier;
@@ -349,17 +349,17 @@ void RayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->Dispatch(DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4));
 }
 
-const DescriptorTable& RayCaster::GetLightSRVTable() const
+const DescriptorTable& MultiRayCaster::GetLightSRVTable() const
 {
 	return m_srvTables[SRV_TABLE_LIGHT_MAP];
 }
 
-Resource* RayCaster::GetLightMap() const
+Resource* MultiRayCaster::GetLightMap() const
 {
 	return m_lightMap.get();
 }
 
-bool RayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
+bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 	uint32_t numVolumeSrcs, vector<Resource::uptr>& uploaders)
 {
 	{
@@ -433,7 +433,7 @@ bool RayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_
 	return true;
 }
 
-bool RayCaster::createPipelineLayouts()
+bool MultiRayCaster::createPipelineLayouts()
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
 	const auto numVolumeSrcs = static_cast<uint32_t>(m_volumes.size());
@@ -515,7 +515,7 @@ bool RayCaster::createPipelineLayouts()
 	return true;
 }
 
-bool RayCaster::createPipelines(Format rtFormat)
+bool MultiRayCaster::createPipelines(Format rtFormat)
 {
 	auto vsIndex = 0u;
 	auto psIndex = 0u;
@@ -591,7 +591,7 @@ bool RayCaster::createPipelines(Format rtFormat)
 	return true;
 }
 
-bool RayCaster::createCommandLayout()
+bool MultiRayCaster::createCommandLayout()
 {
 	IndirectArgument arg;
 	arg.Type = IndirectArgumentType::DISPATCH;
@@ -600,7 +600,7 @@ bool RayCaster::createCommandLayout()
 	return m_commandLayout->Create(m_device.get(), sizeof(uint32_t[3]), 1, &arg);
 }
 
-bool RayCaster::createDescriptorTables()
+bool MultiRayCaster::createDescriptorTables()
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
 	const auto numVolumeSrcs = static_cast<uint32_t>(m_volumes.size());
@@ -739,7 +739,7 @@ bool RayCaster::createDescriptorTables()
 	return true;
 }
 
-bool RayCaster::buildAccelerationStructures(const RayTracing::CommandList* pCommandList, GeometryBuffer* pGeometry)
+bool MultiRayCaster::buildAccelerationStructures(const RayTracing::CommandList* pCommandList, GeometryBuffer* pGeometry)
 {
 	AccelerationStructure::SetFrameCount(FrameCount);
 
@@ -781,7 +781,7 @@ bool RayCaster::buildAccelerationStructures(const RayTracing::CommandList* pComm
 	return true;
 }
 
-bool RayCaster::buildShaderTables()
+bool MultiRayCaster::buildShaderTables()
 {
 	// Get shader identifiers.
 	const auto shaderIDSize = ShaderRecord::GetShaderIDSize(m_device.get());
@@ -804,7 +804,7 @@ bool RayCaster::buildShaderTables()
 	return true;
 }
 
-void RayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
 	ResourceBarrier barriers[2];
@@ -835,7 +835,7 @@ void RayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frame
 	pCommandList->Dispatch(DIV_UP(numVolumes, 4), 1, 1);
 }
 
-void RayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
 	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 5);
@@ -874,7 +874,7 @@ void RayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 	pCommandList->ExecuteIndirect(m_commandLayout.get(), 1, m_volumeDispatchArg.get());
 }
 
-void RayCaster::renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
 	ResourceBarrier barriers[2];
