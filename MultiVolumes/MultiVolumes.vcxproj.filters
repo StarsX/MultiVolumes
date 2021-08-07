@@ -180,6 +180,15 @@
     <FxCompile Include="Content\Shaders\CSR32FToRGBA16F.hlsl">
       <Filter>Shaders\VolumeData</Filter>
     </FxCompile>
+    <FxCompile Include="Content\Shaders\VSCubeDP.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\PSDepthPeel.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\PSResolveOIT.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="Content\Shaders\RayTracing.hlsl">

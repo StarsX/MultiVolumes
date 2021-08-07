@@ -21,6 +21,7 @@ public:
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool SetDepthMaps(const XUSG::DepthStencil::uptr* depths);
+	bool SetViewport(uint32_t width, uint32_t height);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
 	void SetVolumeWorld(float size, const DirectX::XMFLOAT3& pos);
@@ -44,7 +45,9 @@ protected:
 		VOLUME_CULL,
 		RAY_MARCH_L,
 		RAY_MARCH_V,
+		CUBE_DEPTH_PEEL,
 		RENDER_CUBE,
+		RESOLVE_OIT,
 		RAY_TRACING,
 
 		NUM_PIPELINE
@@ -59,6 +62,10 @@ protected:
 		SRV_TABLE_LIGHT_MAP,
 		SRV_TABLE_DEPTH,
 		SRV_TABLE_SHADOW,
+		SRV_TABLE_CUBE_MAP,
+		SRV_TABLE_CUBE_DEPTH,
+		SRV_TABLE_K_COLORS,
+		SRV_TABLE_K_DEPTHS,
 
 		NUM_SRV_TABLE
 	};
@@ -69,6 +76,8 @@ protected:
 		UAV_TABLE_CUBE_MAP,
 		UAV_TABLE_CUBE_DEPTH,
 		UAV_TABLE_LIGHT_MAP,
+		UAV_TABLE_K_COLORS,
+		UAV_TABLE_K_DEPTHS,
 
 		NUM_UAV_TABLE
 	};
@@ -91,7 +100,9 @@ protected:
 
 	void cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void cubeDepthPeel(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void resolveOIT(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	XUSG::RayTracing::Device::sptr m_device;
 
@@ -121,7 +132,6 @@ protected:
 	XUSG::CommandLayout::uptr m_commandLayout;
 
 	std::vector<XUSG::DescriptorTable> m_uavInitTables;
-	std::vector<XUSG::DescriptorTable> m_srvMipTables;
 	XUSG::DescriptorTable	m_cbvTables[FrameCount];
 	XUSG::DescriptorTable	m_cbvSrvTables[FrameCount];
 	XUSG::DescriptorTable	m_uavTables[NUM_UAV_TABLE];
@@ -133,6 +143,8 @@ protected:
 	std::vector<XUSG::Texture2D::uptr>	m_cubeMaps;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeDepths;
 	XUSG::Texture3D::uptr		m_lightMap;
+	XUSG::Texture2D::uptr		m_kDepths;
+	XUSG::Texture2D::uptr		m_kColors;
 	XUSG::ConstantBuffer::uptr	m_cbPerFrame;
 	XUSG::ConstantBuffer::uptr	m_cbPerObject;
 	XUSG::StructuredBuffer::uptr m_matrices;

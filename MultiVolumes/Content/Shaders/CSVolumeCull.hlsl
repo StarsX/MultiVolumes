@@ -175,7 +175,7 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0);
 	const uint waveMask = WaveActiveBallot(isInView).x;
 	const uint volumeVis = (waveMask >> GTid.y) & 0xff;
-	if (GTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
+	//if (GTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
 
 	// Viewport-visibility culling
 	if (volumeVis == 0) return;

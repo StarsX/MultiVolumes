@@ -3,47 +3,19 @@
 //--------------------------------------------------------------------------------------
 
 #include "SharedConsts.h"
+#include "Common.hlsli"
 
 //--------------------------------------------------------------------------------------
-// Constant buffer
+// Buffers and textures
 //--------------------------------------------------------------------------------------
-cbuffer cbPerObject
-{
-	matrix g_worldViewProjI;
-	matrix g_worldViewProj;
-	matrix g_shadowWVP;
-	float4x3 g_worldI;
-	float4x3 g_lightMapWorld;
-	float4 g_eyePos;
-	float4 g_lightPos;
-	float4 g_lightColor;
-	float4 g_ambient;
-};
+StructuredBuffer<Matrices> g_roMatrices	: register (t0);
 
-//--------------------------------------------------------------------------------------
-// Texture
-//--------------------------------------------------------------------------------------
-#if _USE_PURE_ARRAY_
-Texture2DArray<float4> g_txCubeMap;
-#else
-TextureCube<float4> g_txCubeMap;
-#endif
+TextureCube	g_txCubeMaps[]			: register (t0, space1);
 
 #ifdef _HAS_DEPTH_MAP_
-
-#if _USE_PURE_ARRAY_
-Texture2DArray<float> g_txCubeDepth;
-#else
-TextureCube<float4> g_txCubeDepth;
+TextureCube<float> g_txCubeDepths[]	: register (t0, space2);
+Texture2D<float> g_txDepth			: register (t0, space3);
 #endif
-
-Texture2D<float> g_txDepth;
-#endif
-
-//--------------------------------------------------------------------------------------
-// Texture sampler
-//--------------------------------------------------------------------------------------
-SamplerState g_smpLinear;
 
 //--------------------------------------------------------------------------------------
 // Unproject and return z in viewing space
@@ -63,7 +35,6 @@ min16float2 GetDomain(float2 uv, float3 pos, float3 rayDir, float2 gridSize)
 	uv *= gridSize;
 	min16float2 domain = min16float2(frac(uv + 0.5));
 
-#if !_USE_PURE_ARRAY_
 	const float bound = gridSize.x - 1.0;
 	const float3 axes = pos * gridSize.x;
 	if (any(abs(axes) > bound && axes * rayDir < 0.0))
@@ -72,7 +43,6 @@ min16float2 GetDomain(float2 uv, float3 pos, float3 rayDir, float2 gridSize)
 		uv = min(uv, gridSize - 0.5);
 		domain = uv < 0.5 ? 1.0 : 0.0;
 	}
-#endif
 
 	return domain;
 }
@@ -80,27 +50,25 @@ min16float2 GetDomain(float2 uv, float3 pos, float3 rayDir, float2 gridSize)
 //--------------------------------------------------------------------------------------
 // Cube interior-surface casting
 //--------------------------------------------------------------------------------------
-min16float4 CubeCast(uint2 idx, float3 uvw, float3 pos, float3 rayDir)
+min16float4 CubeCast(uint2 idx, float3 uvw, float3 pos, float3 rayDir, uint uavIdx)
 {
 	float2 gridSize;
-	g_txCubeMap.GetDimensions(gridSize.x, gridSize.y);
+	const TextureCube txCubeMap = g_txCubeMaps[uavIdx];
+	txCubeMap.GetDimensions(gridSize.x, gridSize.y);
 	float2 uv = uvw.xy;
-
-#if !_USE_PURE_ARRAY_
 	uvw = pos;
-#endif
 
-	const float4 color = g_txCubeMap.SampleLevel(g_smpLinear, uvw, 0.0);
+	const float4 color = txCubeMap.SampleLevel(g_smpLinear, uvw, 0.0);
 	const float4x4 gathers =
 	{
-		g_txCubeMap.GatherRed(g_smpLinear, uvw),
-		g_txCubeMap.GatherGreen(g_smpLinear, uvw),
-		g_txCubeMap.GatherBlue(g_smpLinear, uvw),
-		g_txCubeMap.GatherAlpha(g_smpLinear, uvw)
+		txCubeMap.GatherRed(g_smpLinear, uvw),
+		txCubeMap.GatherGreen(g_smpLinear, uvw),
+		txCubeMap.GatherBlue(g_smpLinear, uvw),
+		txCubeMap.GatherAlpha(g_smpLinear, uvw)
 	};
 
 #ifdef _HAS_DEPTH_MAP_
-	const float4 z = g_txCubeDepth.GatherRed(g_smpLinear, uvw);
+	const float4 z = g_txCubeDepths[uavIdx].Gather(g_smpLinear, uvw);
 	float depth = g_txDepth[idx];
 #endif
 
