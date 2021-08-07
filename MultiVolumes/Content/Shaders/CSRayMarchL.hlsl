@@ -9,7 +9,7 @@
 //--------------------------------------------------------------------------------------
 RWTexture3D<float3> g_rwLightMap;
 
-StructuredBuffer<Matrices>		g_roMatrices	: register (t0);
+StructuredBuffer<PerObject>		g_roPerObject	: register (t0);
 StructuredBuffer<VolumeDesc>	g_roVolumes		: register (t1);
 
 //--------------------------------------------------------------------------------------
@@ -34,14 +34,14 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
 	for (uint n = 0; n < structInfo.x; ++n)
 	{
-		const Matrices matrices = g_roMatrices[n];
+		const PerObject perObject = g_roPerObject[n];
 		VolumeDesc volume = g_roVolumes[n];
 
-		const float3 localRayOrigin = mul(rayOrigin, matrices.WorldI);	// World space to volume space
+		const float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
 
 		// Transmittance
 #ifdef _HAS_SHADOW_MAP_
-		shadow *= ShadowTest(localRayOrigin, g_txDepth, matrices.ShadowWVP);		
+		shadow *= ShadowTest(localRayOrigin, g_txDepth, perObject.ShadowWVP);
 #endif
 
 		float3 uvw = localRayOrigin * 0.5 + 0.5;
@@ -53,10 +53,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		}*/
 
 #ifdef _POINT_LIGHT_
-		const float3 localSpaceLightPt = mul(g_lightPos, matrices.WorldI);
+		const float3 localSpaceLightPt = mul(g_lightPos, perObject.WorldI);
 		const float3 rayDir = normalize(localSpaceLightPt - localRayOrigin);
 #else
-		const float3 localSpaceLightPt = mul(g_lightPos.xyz, (float3x3)matrices.WorldI);
+		const float3 localSpaceLightPt = mul(g_lightPos.xyz, (float3x3)perObject.WorldI);
 		const float3 rayDir = normalize(localSpaceLightPt);
 #endif
 

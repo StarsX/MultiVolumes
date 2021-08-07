@@ -28,13 +28,13 @@ struct VisibleVolume
 	uint VolTexId;	// Volume texture Id
 };
 
-struct Matrices
+struct PerObject
 {
 	float4x4 WorldViewProj;
 	float4x4 WorldViewProjI;
+	float4x4 ShadowWVP;
 	float4x3 WorldI;
 	float4x3 ToLightSpace;
-	float4x4 ShadowWVP;
 };
 
 //--------------------------------------------------------------------------------------

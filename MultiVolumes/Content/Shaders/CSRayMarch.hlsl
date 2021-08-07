@@ -13,7 +13,7 @@ RWTexture2DArray<float4> g_rwCubeMaps[]		: register (u0, space0);
 RWTexture2DArray<float> g_rwCubeDepths[]	: register (u0, space1);
 #endif
 
-StructuredBuffer<Matrices>		g_roMatrices		: register (t0);
+StructuredBuffer<PerObject>		g_roPerObject		: register (t0);
 StructuredBuffer<VisibleVolume>	g_roVisibleVolumes	: register (t1);
 
 //--------------------------------------------------------------------------------------
@@ -82,8 +82,8 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	if ((volumeInfo.FaceMask & (1 << GTid.z)) == 0) return;
 
 	volumeInfo.VolumeId = WaveReadLaneFirst(volumeInfo.VolumeId);
-	const Matrices matrices = g_roMatrices[volumeInfo.VolumeId];
-	float3 rayOrigin = mul(float4(g_eyePt, 1.0), matrices.WorldI);
+	const PerObject perObject = g_roPerObject[volumeInfo.VolumeId];
+	float3 rayOrigin = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 
 	volumeInfo.Mip_SCnt = WaveReadLaneFirst(volumeInfo.Mip_SCnt);
 	const uint mipLevel = volumeInfo.Mip_SCnt >> 16;
@@ -95,9 +95,9 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 #ifdef _HAS_DEPTH_MAP_
 	// Calculate occluded end point
-	const float3 pos = GetClipPos(rayOrigin, rayDir, matrices.WorldViewProj);
+	const float3 pos = GetClipPos(rayOrigin, rayDir, perObject.WorldViewProj);
 	g_rwCubeDepths[uavIdx][DTid] = pos.z;
-	const float tMax = GetTMax(pos, rayOrigin, rayDir, matrices.WorldViewProjI);
+	const float tMax = GetTMax(pos, rayOrigin, rayDir, perObject.WorldViewProjI);
 #endif
 
 	volumeInfo.VolTexId = WaveReadLaneFirst(volumeInfo.VolTexId);
@@ -124,7 +124,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 		if (color.w > ZERO_THRESHOLD)
 		{
 			// Sample light
-			const float3 light = GetLight(pos, matrices.ToLightSpace);
+			const float3 light = GetLight(pos, perObject.ToLightSpace);
 
 			// Accumulate color
 			color.w = GetOpacity(color.w, stepScale);

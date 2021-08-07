@@ -15,7 +15,7 @@ typedef VisibleVolume VolumeOut;
 //--------------------------------------------------------------------------------------
 // Buffers
 //--------------------------------------------------------------------------------------
-StructuredBuffer<Matrices>	g_roMatrices;
+StructuredBuffer<PerObject>	g_roPerObject;
 StructuredBuffer<VolumeIn>	g_roVolumes;
 
 AppendStructuredBuffer<VolumeOut> g_rwVisibleVolumes;
@@ -166,10 +166,10 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	const uint volumeId = Gid * GROUP_VOLUME_COUNT + GTid.y;
 	if (volumeId >= structInfo.x) return;
 
-	const Matrices matrices = g_roMatrices[volumeId];
+	const PerObject perObject = g_roPerObject[volumeId];
 
 	// Project vertex to viewport space
-	const float4 v = ProjectToViewport(GTid.x, matrices.WorldViewProj, g_viewport);
+	const float4 v = ProjectToViewport(GTid.x, perObject.WorldViewProj, g_viewport);
 
 	// If any vertices are inside viewport
 	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0);
@@ -190,7 +190,7 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 
 	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
 		volumeIn.NumMips, volumeIn.CubeMapSize, v.xy, GTid);
-	const uint faceMask = GenVisibilityMask(matrices.WorldI, g_eyePt, GTid);
+	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, GTid);
 
 	if (GTid.x == 0)
 	{

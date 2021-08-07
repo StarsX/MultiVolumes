@@ -31,13 +31,13 @@ struct CBPerFrame
 	XMFLOAT4 Ambient;
 };
 
-struct Matrices
+struct PerObject
 {
 	XMFLOAT4X4 WorldViewProj;
 	XMFLOAT4X4 WorldViewProjI;
-	XMFLOAT3X4 WorldI;
-	XMFLOAT3X4 ToLightSpace;
 	XMFLOAT4X4 ShadowWVP;
+	XMFLOAT3X4 WorldI;
+	XMFLOAT3X4 LocalToLight;
 };
 
 struct VolumeDesc
@@ -284,19 +284,19 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 		const auto lightWorld = XMLoadFloat3x4(&m_lightMapWorld);
 		const auto lightWorldI = XMMatrixInverse(nullptr, lightWorld);
 
-		const auto pMappedData = reinterpret_cast<Matrices*>(m_matrices->Map(frameIndex));
+		const auto pMappedData = reinterpret_cast<PerObject*>(m_perObject->Map(frameIndex));
 		for (auto i = 0u; i < 1; ++i)
 		{
 			const auto world = XMLoadFloat3x4(&m_volumeWorld);
 			const auto worldI = XMMatrixInverse(nullptr, world);
 			const auto worldViewProj = world * viewProj;
-			const auto toLightSpace = world * lightWorldI;
+			const auto localToLight = world * lightWorldI;
 
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProj, XMMatrixTranspose(worldViewProj));
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProjI, XMMatrixTranspose(XMMatrixInverse(nullptr, worldViewProj)));
-			XMStoreFloat3x4(&pMappedData[i].WorldI, worldI);
-			XMStoreFloat3x4(&pMappedData[i].ToLightSpace, toLightSpace);
 			XMStoreFloat4x4(&pMappedData[i].ShadowWVP, XMMatrixTranspose(world * shadowVP));
+			XMStoreFloat3x4(&pMappedData[i].WorldI, worldI);
+			XMStoreFloat3x4(&pMappedData[i].LocalToLight, localToLight);
 		}
 	}
 }
@@ -379,9 +379,9 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		uint32_t firstSRVElements[FrameCount];
 		for (uint8_t i = 0; i < FrameCount; ++i) firstSRVElements[i] = numVolumes * i;
 
-		m_matrices = StructuredBuffer::MakeUnique();
-		N_RETURN(m_matrices->Create(m_device.get(), numVolumes * FrameCount,
-			sizeof(Matrices), ResourceFlag::NONE, MemoryType::UPLOAD, FrameCount,
+		m_perObject = StructuredBuffer::MakeUnique();
+		N_RETURN(m_perObject->Create(m_device.get(), numVolumes * FrameCount,
+			sizeof(PerObject), ResourceFlag::NONE, MemoryType::UPLOAD, FrameCount,
 			firstSRVElements, 0, nullptr, L"RayCaster.Matrices"), false);
 	}
 
@@ -707,7 +707,7 @@ bool MultiRayCaster::createDescriptorTables()
 		const Descriptor descriptors[] =
 		{
 			m_cbPerFrame->GetCBV(i),
-			m_matrices->GetSRV(i)
+			m_perObject->GetSRV(i)
 		};
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
 		X_RETURN(m_cbvSrvTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);

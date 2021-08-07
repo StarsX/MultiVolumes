@@ -28,8 +28,8 @@ void main(PSIn input)// : SV_TARGET
 	const uint volumeId = input.Ids.x;
 	const uint uavIdx = input.Ids.y;
 
-	const Matrices matrices = g_roMatrices[volumeId];
-	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), matrices.WorldI);
+	const PerObject perObject = g_roPerObject[volumeId];
+	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt.xyz - localSpaceEyePt;
 
 #if 0

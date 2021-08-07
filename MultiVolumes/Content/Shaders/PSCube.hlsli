@@ -8,7 +8,7 @@
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-StructuredBuffer<Matrices> g_roMatrices	: register (t0);
+StructuredBuffer<PerObject> g_roPerObject	: register (t0);
 
 TextureCube	g_txCubeMaps[]			: register (t0, space1);
 

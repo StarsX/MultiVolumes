@@ -38,7 +38,7 @@ static const float3x3 planes[6] =
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-StructuredBuffer<Matrices>		g_roMatrices		: register (t0);
+StructuredBuffer<PerObject>		g_roPerObject		: register (t0);
 StructuredBuffer<VisibleVolume>	g_roVisibleVolumes	: register (t1);
 
 //--------------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	const uint vertId = vid % 4;
 
 	const VisibleVolume volumeInfo = g_roVisibleVolumes[iid];
-	const Matrices matrices = g_roMatrices[volumeInfo.VolumeId];
+	const PerObject perObject = g_roPerObject[volumeInfo.VolumeId];
 
 	const uint mipLevel = volumeInfo.Mip_SCnt >> 16;
 	const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolumeId + mipLevel;
@@ -62,7 +62,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	float3 pos = float3(pos2D.x, -pos2D.y, 1.0);
 	pos = mul(pos, planes[faceId]);
 
-	output.Pos = mul(float4(pos, 1.0), matrices.WorldViewProj);
+	output.Pos = mul(float4(pos, 1.0), perObject.WorldViewProj);
 	output.UVW = float3(1.0 - uv.x, uv.y, faceId); // Exterior UV to interior UV
 	output.LPt = pos;
 	output.Ids.x = volumeInfo.VolumeId;
