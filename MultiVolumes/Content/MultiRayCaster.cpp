@@ -31,24 +31,12 @@ struct CBPerFrame
 	XMFLOAT4 Ambient;
 };
 
-struct CBPerObject
-{
-	XMFLOAT4X4 WorldViewProjI;
-	XMFLOAT4X4 WorldViewProj;
-	XMFLOAT4X4 ShadowWVP;
-	XMFLOAT3X4 WorldI;
-	XMFLOAT3X4 LightMapWorld;
-	XMFLOAT4 EyePos;
-	XMFLOAT4 LightPos;
-	XMFLOAT4 LightColor;
-	XMFLOAT4 Ambient;
-};
-
 struct Matrices
 {
 	XMFLOAT4X4 WorldViewProj;
 	XMFLOAT4X4 WorldViewProjI;
 	XMFLOAT3X4 WorldI;
+	XMFLOAT3X4 ToLightSpace;
 	XMFLOAT4X4 ShadowWVP;
 };
 
@@ -138,9 +126,9 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	N_RETURN(m_cbPerFrame->Create(m_device.get(), sizeof(CBPerFrame[FrameCount]), FrameCount,
 		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerFrame"), false);
 
-	m_cbPerObject = ConstantBuffer::MakeUnique();
+	/*m_cbPerObject = ConstantBuffer::MakeUnique();
 	N_RETURN(m_cbPerObject->Create(m_device.get(), sizeof(CBPerObject[FrameCount]), FrameCount,
-		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerObject"), false);
+		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerObject"), false);*/
 
 	// Create pipelines
 	N_RETURN(createPipelineLayouts(), false);
@@ -280,27 +268,6 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 	const auto width = static_cast<float>(depth->GetWidth());
 	const auto height = static_cast<float>(depth->GetHeight());
 
-	// General matrices
-	const auto world = XMLoadFloat3x4(&m_volumeWorld);
-	const auto worldI = XMMatrixInverse(nullptr, world);
-	const auto worldViewProj = world * viewProj;
-
-	{
-		// Screen space matrices
-		const auto pCbData = reinterpret_cast<CBPerObject*>(m_cbPerObject->Map(frameIndex));
-		XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(worldViewProj));
-		XMStoreFloat4x4(&pCbData->WorldViewProjI, XMMatrixTranspose(XMMatrixInverse(nullptr, worldViewProj)));
-		XMStoreFloat4x4(&pCbData->ShadowWVP, XMMatrixTranspose(world * shadowVP));
-		XMStoreFloat3x4(&pCbData->WorldI, worldI);
-
-		// Lighting
-		pCbData->LightMapWorld = m_lightMapWorld;
-		pCbData->EyePos = XMFLOAT4(eyePt.x, eyePt.y, eyePt.z, 1.0f);
-		pCbData->LightPos = XMFLOAT4(m_lightPt.x, m_lightPt.y, m_lightPt.z, 1.0f);
-		pCbData->LightColor = m_lightColor;
-		pCbData->Ambient = m_ambient;
-	}
-
 	// Per-frame
 	{
 		const auto pCbData = reinterpret_cast<CBPerFrame*>(m_cbPerFrame->Map(frameIndex));
@@ -314,13 +281,21 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 
 	// Per-object
 	{
-		const auto pMappedData = reinterpret_cast<Matrices*>(m_matrices->Map(frameIndex));
+		const auto lightWorld = XMLoadFloat3x4(&m_lightMapWorld);
+		const auto lightWorldI = XMMatrixInverse(nullptr, lightWorld);
 
+		const auto pMappedData = reinterpret_cast<Matrices*>(m_matrices->Map(frameIndex));
 		for (auto i = 0u; i < 1; ++i)
 		{
+			const auto world = XMLoadFloat3x4(&m_volumeWorld);
+			const auto worldI = XMMatrixInverse(nullptr, world);
+			const auto worldViewProj = world * viewProj;
+			const auto toLightSpace = world * lightWorldI;
+
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProj, XMMatrixTranspose(worldViewProj));
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProjI, XMMatrixTranspose(XMMatrixInverse(nullptr, worldViewProj)));
 			XMStoreFloat3x4(&pMappedData[i].WorldI, worldI);
+			XMStoreFloat3x4(&pMappedData[i].ToLightSpace, toLightSpace);
 			XMStoreFloat4x4(&pMappedData[i].ShadowWVP, XMMatrixTranspose(world * shadowVP));
 		}
 	}
@@ -724,14 +699,6 @@ bool MultiRayCaster::createDescriptorTables()
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
 	const auto numVolumeSrcs = static_cast<uint32_t>(m_volumes.size());
-
-	// Create CBV tables
-	for (uint8_t i = 0; i < FrameCount; ++i)
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_cbPerObject->GetCBV(i));
-		X_RETURN(m_cbvTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
-	}
 
 	// Create CBV and SRV tables
 	for (uint8_t i = 0; i < FrameCount; ++i)

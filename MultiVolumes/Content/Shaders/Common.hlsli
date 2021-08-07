@@ -33,6 +33,7 @@ struct Matrices
 	float4x4 WorldViewProj;
 	float4x4 WorldViewProjI;
 	float4x3 WorldI;
+	float4x3 ToLightSpace;
 	float4x4 ShadowWVP;
 };
 

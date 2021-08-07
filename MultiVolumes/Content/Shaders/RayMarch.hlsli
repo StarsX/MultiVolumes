@@ -122,8 +122,9 @@ float3 LocalToTex3DSpace(float3 pos)
 //--------------------------------------------------------------------------------------
 // Get light
 //--------------------------------------------------------------------------------------
-float3 GetLight(float3 pos)
+float3 GetLight(float3 pos, float4x3 toLightSpace)
 {
+	pos = mul(float4(pos, 1.0), toLightSpace);
 	const float3 uvw = pos * 0.5 + 0.5;
 
 	return g_txLightMap.SampleLevel(g_smpLinear, uvw, 0.0);

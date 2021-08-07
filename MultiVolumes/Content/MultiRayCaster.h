@@ -156,7 +156,6 @@ protected:
 	XUSG::Texture2D::uptr		m_kDepths;
 	XUSG::Texture2D::uptr		m_kColors;
 	XUSG::ConstantBuffer::uptr	m_cbPerFrame;
-	XUSG::ConstantBuffer::uptr	m_cbPerObject;
 	XUSG::StructuredBuffer::uptr m_matrices;
 	XUSG::StructuredBuffer::uptr m_volumeDescs;
 	XUSG::StructuredBuffer::uptr m_visibleVolumes;

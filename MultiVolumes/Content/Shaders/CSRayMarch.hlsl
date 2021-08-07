@@ -124,7 +124,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 		if (color.w > ZERO_THRESHOLD)
 		{
 			// Sample light
-			const float3 light = GetLight(pos);
+			const float3 light = GetLight(pos, matrices.ToLightSpace);
 
 			// Accumulate color
 			color.w = GetOpacity(color.w, stepScale);

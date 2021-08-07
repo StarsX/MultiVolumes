@@ -260,7 +260,7 @@ void MultiVolumes::OnUpdate()
 	timeStep = m_isPaused ? 0.0f : timeStep;
 	time = totalTime - pauseTime;
 
-	m_rayCaster->SetLightMapWorld(40.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
+	m_rayCaster->SetLightMapWorld(80.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 
 	// View
 	//const auto eyePt = XMLoadFloat3(&m_eyePt);
