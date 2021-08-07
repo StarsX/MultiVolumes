@@ -53,6 +53,14 @@ protected:
 		NUM_PIPELINE
 	};
 
+	enum CommandLayoutIndex : uint8_t
+	{
+		DISPATCH_LAYOUT,
+		DRAW_LAYOUT,
+
+		NUM_COMMAND_LAYOUT
+	};
+
 	enum SrvTable : uint8_t
 	{
 		SRV_TABLE_FILE_SRC,
@@ -88,11 +96,12 @@ protected:
 		SHADOW_MAP
 	};
 
+	bool createCubeIB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createPipelineLayouts();
 	bool createPipelines(XUSG::Format rtFormat);
-	bool createCommandLayout();
+	bool createCommandLayouts();
 	bool createDescriptorTables();
 	bool buildAccelerationStructures(const XUSG::RayTracing::CommandList* pCommandList,
 		XUSG::RayTracing::GeometryBuffer* pGeometries);
@@ -100,8 +109,8 @@ protected:
 
 	void cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void cubeDepthPeel(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void resolveOIT(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	XUSG::RayTracing::Device::sptr m_device;
@@ -109,7 +118,8 @@ protected:
 	XUSG::RayTracing::BottomLevelAS::uptr m_bottomLevelAS;
 	XUSG::RayTracing::TopLevelAS::uptr m_topLevelAS;
 
-	XUSG::VertexBuffer::uptr m_vertexBuffer;
+	XUSG::VertexBuffer::uptr	m_vertexBuffer;
+	XUSG::IndexBuffer::uptr		m_indexBuffer;
 
 	// Shader tables
 	static const wchar_t* HitGroupName;
@@ -129,7 +139,7 @@ protected:
 
 	XUSG::PipelineLayout	m_pipelineLayouts[NUM_PIPELINE];
 	XUSG::Pipeline			m_pipelines[NUM_PIPELINE];
-	XUSG::CommandLayout::uptr m_commandLayout;
+	XUSG::CommandLayout::uptr m_commandLayouts[NUM_COMMAND_LAYOUT];
 
 	std::vector<XUSG::DescriptorTable> m_uavInitTables;
 	XUSG::DescriptorTable	m_cbvTables[FrameCount];

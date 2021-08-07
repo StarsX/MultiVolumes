@@ -147,7 +147,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	N_RETURN(createPipelines(rtFormat), false);
 
 	// create command layout
-	N_RETURN(createCommandLayout(), false);
+	N_RETURN(createCommandLayouts(), false);
 
 	const float aabb[] = { -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 	m_vertexBuffer = VertexBuffer::MakeUnique();
@@ -155,6 +155,8 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 		MemoryType::DEFAULT, 1, nullptr, 0, nullptr, 0, nullptr, L"AABB"), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 	N_RETURN(m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), aabb, sizeof(float[6])), false);
+
+	N_RETURN(createCubeIB(pCommandList, uploaders), false);
 
 	//N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
 	N_RETURN(createDescriptorTables(), false);
@@ -375,6 +377,26 @@ Resource* MultiRayCaster::GetLightMap() const
 	return m_lightMap.get();
 }
 
+bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
+{
+	uint16_t indices[] =
+	{
+		0, 1, 2, 3, 2, 1,
+		4, 5, 6, 7, 6, 5,
+		8, 9, 10, 11, 10, 9,
+		12, 13, 14, 15, 14, 13,
+		16, 17, 18, 19, 18, 17,
+		20, 21, 22, 23, 22, 21
+	};
+
+	m_indexBuffer = IndexBuffer::MakeUnique();
+	N_RETURN(m_indexBuffer->Create(m_device.get(), sizeof(indices), Format::R16_UINT, ResourceFlag::NONE,
+		MemoryType::DEFAULT, 1, nullptr, 1, nullptr, 1, nullptr, L"CubeIB"), false);
+	uploaders.emplace_back(Resource::MakeUnique());
+
+	return m_indexBuffer->Upload(pCommandList, uploaders.back().get(), indices, sizeof(indices));
+}
+
 bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 	uint32_t numVolumeSrcs, vector<Resource::uptr>& uploaders)
 {
@@ -430,9 +452,18 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
 			0, nullptr, L"RayCaster.VisibleVolumeDispatchArg"), false);
 
-		const uint32_t pDataReset[] = { DIV_UP(m_gridSize, 8), DIV_UP(m_gridSize, 4), 0 };
+		const uint32_t pDispatchReset[] = { DIV_UP(m_gridSize, 8), DIV_UP(m_gridSize, 4), 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
-		N_RETURN(m_volumeDispatchArg->Upload(pCommandList, uploaders.back().get(), pDataReset, sizeof(uint32_t[3])), false);
+		N_RETURN(m_volumeDispatchArg->Upload(pCommandList, uploaders.back().get(), pDispatchReset, sizeof(uint32_t[3])), false);
+
+		m_volumeDrawArg = RawBuffer::MakeUnique();
+		N_RETURN(m_volumeDrawArg->Create(m_device.get(), sizeof(uint32_t[5]),
+			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
+			0, nullptr, L"RayCaster.VisibleVolumeDrawArg"), false);
+
+		const uint32_t pDrawReset[] = { 36, 0, 0, 0, 0 };
+		uploaders.emplace_back(Resource::MakeUnique());
+		N_RETURN(m_volumeDrawArg->Upload(pCommandList, uploaders.back().get(), pDrawReset, sizeof(uint32_t[5])), false);
 
 		const auto clear = 0u;
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -670,13 +701,23 @@ bool MultiRayCaster::createPipelines(Format rtFormat)
 	return true;
 }
 
-bool MultiRayCaster::createCommandLayout()
+bool MultiRayCaster::createCommandLayouts()
 {
-	IndirectArgument arg;
-	arg.Type = IndirectArgumentType::DISPATCH;
-	m_commandLayout = CommandLayout::MakeUnique();
+	{
+		IndirectArgument arg;
+		arg.Type = IndirectArgumentType::DISPATCH;
+		m_commandLayouts[DISPATCH_LAYOUT] = CommandLayout::MakeUnique();
+		N_RETURN(m_commandLayouts[DISPATCH_LAYOUT]->Create(m_device.get(), sizeof(uint32_t[3]), 1, &arg), false);
+	}
 
-	return m_commandLayout->Create(m_device.get(), sizeof(uint32_t[3]), 1, &arg);
+	{
+		IndirectArgument arg;
+		arg.Type = IndirectArgumentType::DRAW_INDEXED;
+		m_commandLayouts[DRAW_LAYOUT] = CommandLayout::MakeUnique();
+		N_RETURN(m_commandLayouts[DRAW_LAYOUT]->Create(m_device.get(), sizeof(uint32_t[5]), 1, &arg), false);
+	}
+
+	return true;
 }
 
 bool MultiRayCaster::createDescriptorTables()
@@ -952,7 +993,7 @@ void MultiRayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t 
 void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 5);
+	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 6);
 	auto numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE);
 	numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE |
@@ -962,11 +1003,13 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST, numBarriers);
+	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST, numBarriers);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_SOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Copy counter to dispatch arg.z
 	pCommandList->CopyBufferRegion(m_volumeDispatchArg.get(), sizeof(uint32_t[2]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
 
 	numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT);
 	pCommandList->Barrier(numBarriers, barriers.data());
@@ -985,15 +1028,16 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 	pCommandList->SetComputeDescriptorTable(6, m_samplerTable);
 
 	// Dispatch cube
-	pCommandList->ExecuteIndirect(m_commandLayout.get(), 1, m_volumeDispatchArg.get());
+	pCommandList->ExecuteIndirect(m_commandLayouts[DISPATCH_LAYOUT].get(), 1, m_volumeDispatchArg.get());
 }
 
-void MultiRayCaster::cubeDepthPeel(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	ResourceBarrier barrier;
-	const auto numBarriers = m_kDepths->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
-	pCommandList->Barrier(numBarriers, &barrier);
+	ResourceBarrier barriers[2];
+	auto numBarriers = m_kDepths->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
+	numBarriers = m_volumeDispatchArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT, numBarriers);
+	pCommandList->Barrier(numBarriers, barriers);
 
 	// Clear depths
 	const auto maxDepth = 1.0f;
@@ -1012,11 +1056,12 @@ void MultiRayCaster::cubeDepthPeel(const XUSG::CommandList* pCommandList, uint8_
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
 	pCommandList->SetGraphicsDescriptorTable(2, m_uavTables[UAV_TABLE_K_DEPTHS]);
 
-	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLESTRIP);
-	pCommandList->Draw(4, 6, 0, 0);
+	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
+	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
+	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
-void MultiRayCaster::renderCube(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
 	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
@@ -1048,8 +1093,9 @@ void MultiRayCaster::renderCube(const XUSG::CommandList* pCommandList, uint8_t f
 	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetGraphicsDescriptorTable(7, m_samplerTable);
 
-	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLESTRIP);
-	pCommandList->Draw(4, 6, 0, 0);
+	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
+	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
+	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
 void MultiRayCaster::resolveOIT(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
