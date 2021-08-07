@@ -9,7 +9,7 @@
 #undef _INDEPENDENT_DDS_LOADER_
 
 #define NUM_SAMPLES			256
-#define NUM_LIGHT_SAMPLES	64
+#define NUM_LIGHT_SAMPLES	256
 
 using namespace std;
 using namespace DirectX;
@@ -94,11 +94,12 @@ MultiRayCaster::~MultiRayCaster()
 }
 
 bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
-	Format rtFormat, uint32_t gridSize, uint32_t numVolumes, uint32_t numVolumeSrcs, const DepthStencil::uptr* depths,
-	vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
+	Format rtFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
+	const DepthStencil::uptr* depths, vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
 {
 	m_descriptorTableCache = descriptorTableCache;
 	m_gridSize = gridSize;
+	m_lightGridSize = lightGridSize;
 	m_pDepths = depths;
 
 	// Create resources
@@ -128,7 +129,6 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 			(L"CubeDepth" + to_wstring(i)).c_str()), false);
 	}
 
-	m_lightGridSize = gridSize >> 1;
 	m_lightMap = Texture3D::MakeUnique();
 	N_RETURN(m_lightMap->Create(m_device.get(), m_lightGridSize, m_lightGridSize, m_lightGridSize,
 		Format::R11G11B10_FLOAT,ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::ALLOW_SIMULTANEOUS_ACCESS,

@@ -88,6 +88,7 @@ private:
 
 	// User external settings
 	uint32_t m_gridSize;
+	uint32_t m_lightGridSize;
 	std::wstring m_volumeFile;
 	std::string m_meshFileName;
 	XMFLOAT4 m_meshPosScale;

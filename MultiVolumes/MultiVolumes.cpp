@@ -39,6 +39,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_isPaused(false),
 	m_tracking(false),
 	m_gridSize(128),
+	m_lightGridSize(512),
 	m_volumeFile(L""),
 	m_meshFileName("Media/bunny.obj"),
 	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f)
@@ -158,8 +159,8 @@ void MultiVolumes::LoadAssets()
 	GeometryBuffer geometry;
 	m_rayCaster = make_unique<MultiRayCaster>(m_device);
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
-	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat,
-		m_gridSize, numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
+	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
+		numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
 		ThrowIfFailed(E_FAIL);
 
 	if (m_volumeFile.empty())
@@ -258,6 +259,8 @@ void MultiVolumes::OnUpdate()
 	pauseTime = m_isPaused ? totalTime - time : pauseTime;
 	timeStep = m_isPaused ? 0.0f : timeStep;
 	time = totalTime - pauseTime;
+
+	m_rayCaster->SetLightMapWorld(40.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 
 	// View
 	//const auto eyePt = XMLoadFloat3(&m_eyePt);
@@ -477,7 +480,12 @@ void MultiVolumes::PopulateCommandList()
 	};
 	pCommandList->SetDescriptorPools(static_cast<uint32_t>(size(descriptorPools)), descriptorPools);
 
-	m_objectRenderer->RenderShadow(pCommandList, m_frameIndex);
+	static auto isFirstFrame = true;
+	if (isFirstFrame)
+	{
+		m_objectRenderer->RenderShadow(pCommandList, m_frameIndex);
+		isFirstFrame = false;
+	}
 
 	ResourceBarrier barriers[3];
 	const auto pDepth = m_objectRenderer->GetDepthMap(ObjectRenderer::DEPTH_MAP);

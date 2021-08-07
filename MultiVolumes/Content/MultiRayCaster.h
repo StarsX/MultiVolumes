@@ -15,7 +15,7 @@ public:
 	virtual ~MultiRayCaster();
 
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
-		XUSG::Format rtFormat, uint32_t gridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
+		XUSG::Format rtFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
 		const XUSG::DepthStencil::uptr* depths, std::vector<XUSG::Resource::uptr>& uploaders,
 		XUSG::RayTracing::GeometryBuffer* pGeometry);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
