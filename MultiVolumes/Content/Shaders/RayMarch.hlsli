@@ -24,6 +24,10 @@ Texture3D<float4> g_txGrids[]	: register (t0, space1);
 Texture2D<float> g_txDepth		: register (t0, space2);
 #endif
 
+#if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
+TextureCube<float3> g_txIrradiance : register (t1, space2);
+#endif
+
 //--------------------------------------------------------------------------------------
 // Sample density field
 //--------------------------------------------------------------------------------------
@@ -37,12 +41,49 @@ min16float4 GetSample(uint i, float3 uvw)
 }
 
 //--------------------------------------------------------------------------------------
+// Sample density field
+//--------------------------------------------------------------------------------------
+float3 GetDensityGradient(uint i, float3 uvw)
+{
+	static const int3 offsets[] =
+	{
+		int3(-1, 0, 0),
+		int3(1, 0, 0),
+#ifdef _TEXCOORD_INVERT_Y_
+		int3(0, 1, 0),
+		int3(0, -1, 0),
+#else
+		int3(0, -1, 0),
+		int3(0, 1, 0),
+#endif
+		int3(0, 0, -1),
+		int3(0, 0, 1)
+	};
+
+	float q[6];
+	[unroll]
+	for (uint j = 0; j < 6; ++j) q[j] = g_txGrids[i].SampleLevel(g_smpLinear, uvw, 0.0, offsets[j]).w;
+
+	return float3(q[1] - q[0], q[3] - q[2], q[5] - q[4]);
+}
+
+//--------------------------------------------------------------------------------------
 // Get opacity
 //--------------------------------------------------------------------------------------
 min16float GetOpacity(min16float density, min16float stepScale)
 {
 	return saturate(density * stepScale * ABSORPTION * 4.0);
 }
+
+//--------------------------------------------------------------------------------------
+// Get premultiplied color
+//--------------------------------------------------------------------------------------
+#ifdef _PRE_MULTIPLIED_
+min16float3 GetPremultiplied(min16float3 color, min16float stepScale)
+{
+	return color * saturate(stepScale * ABSORPTION * 4.0);
+}
+#endif
 
 //--------------------------------------------------------------------------------------
 // Get occluded end point
@@ -72,6 +113,16 @@ min16float ShadowTest(float3 pos, Texture2D<float> txDepth, matrix shadowWVP)
 	const float depth = txDepth.SampleLevel(g_smpLinear, shadowUV, 0.0);
 
 	return lsPos.z < depth;
+}
+#endif
+
+//--------------------------------------------------------------------------------------
+// Get irradiance
+//--------------------------------------------------------------------------------------
+#if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
+float3 GetIrradiance(float3 dir)
+{
+	return g_txIrradiance.SampleLevel(g_smpLinear, dir, 0.0);
 }
 #endif
 
@@ -122,9 +173,9 @@ float3 LocalToTex3DSpace(float3 pos)
 //--------------------------------------------------------------------------------------
 // Get light
 //--------------------------------------------------------------------------------------
-float3 GetLight(float3 pos, float4x3 toLightSpace)
+float3 GetLight(float3 pos, float4x3 localToLight)
 {
-	pos = mul(float4(pos, 1.0), toLightSpace);
+	pos = mul(float4(pos, 1.0), localToLight);
 	const float3 uvw = pos * 0.5 + 0.5;
 
 	return g_txLightMap.SampleLevel(g_smpLinear, uvw, 0.0);

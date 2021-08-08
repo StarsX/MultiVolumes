@@ -8,9 +8,6 @@
 #include "Advanced/XUSGDDSLoader.h"
 #undef _INDEPENDENT_DDS_LOADER_
 
-#define NUM_SAMPLES			256
-#define NUM_LIGHT_SAMPLES	256
-
 using namespace std;
 using namespace DirectX;
 using namespace XUSG;
@@ -37,6 +34,7 @@ struct PerObject
 	XMFLOAT4X4 WorldViewProjI;
 	XMFLOAT4X4 ShadowWVP;
 	XMFLOAT3X4 WorldI;
+	XMFLOAT3X4 World;
 	XMFLOAT3X4 LocalToLight;
 };
 
@@ -60,7 +58,11 @@ const uint8_t g_numCubeMips = NUM_CUBE_MIP;
 
 MultiRayCaster::MultiRayCaster(const RayTracing::Device::sptr& device) :
 	m_device(device),
+	m_pDepths(nullptr),
+	m_pIrradiance(nullptr),
 	m_instances(),
+	m_maxRaySamples(256),
+	m_maxLightSamples(256),
 	m_lightPt(75.0f, 75.0f, -75.0f),
 	m_lightColor(1.0f, 0.7f, 0.3f, 1.0f),
 	m_ambient(0.0f, 0.3f, 1.0f, 0.4f)
@@ -237,6 +239,17 @@ void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint3
 	pCommandList->Dispatch(DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4));
 }
 
+void MultiRayCaster::SetIrradiance(const ShaderResource* pIrradiance)
+{
+	m_pIrradiance = pIrradiance;
+}
+
+void MultiRayCaster::SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples)
+{
+	m_maxRaySamples = maxRaySamples;
+	m_maxLightSamples = maxLightSamples;
+}
+
 void MultiRayCaster::SetVolumesWorld(float size, const XMFLOAT3& center)
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
@@ -319,6 +332,7 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProjI, XMMatrixTranspose(XMMatrixInverse(nullptr, worldViewProj)));
 			XMStoreFloat4x4(&pMappedData[i].ShadowWVP, XMMatrixTranspose(world * shadowVP));
 			XMStoreFloat3x4(&pMappedData[i].WorldI, worldI);
+			XMStoreFloat3x4(&pMappedData[i].World, world);
 			XMStoreFloat3x4(&pMappedData[i].LocalToLight, localToLight);
 		}
 	}
@@ -357,7 +371,8 @@ void MultiRayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_SHADOW]);
 	pCommandList->SetComputeDescriptorTable(5, m_samplerTable);
-	pCommandList->SetCompute32BitConstant(6, NUM_LIGHT_SAMPLES);
+	pCommandList->SetCompute32BitConstant(6, m_maxLightSamples);
+	pCommandList->SetCompute32BitConstant(6, m_pIrradiance ? 1 : 0, 1);
 
 	// Dispatch grid
 	pCommandList->Dispatch(DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4));
@@ -519,9 +534,9 @@ bool MultiRayCaster::createPipelineLayouts()
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 1, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::SRV, numVolumeSrcs, 0, 1);
-		pipelineLayout->SetRange(4, DescriptorType::SRV, 1, 0, 2);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, 2, 0, 2);
 		pipelineLayout->SetRange(5, DescriptorType::SAMPLER, 1, 0);
-		pipelineLayout->SetConstants(6, 1, 1);
+		pipelineLayout->SetConstants(6, 2, 1);
 		X_RETURN(m_pipelineLayouts[RAY_MARCH_L], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"LightSpaceRayMarchingLayout"), false);
 	}
@@ -817,19 +832,28 @@ bool MultiRayCaster::createDescriptorTables()
 		X_RETURN(m_srvTables[SRV_TABLE_K_COLORS], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
-	if (m_pDepths[DEPTH_MAP])
+	if (m_pDepths)
 	{
+		if (m_pDepths[DEPTH_MAP])
 		{
 			const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 			descriptorTable->SetDescriptors(0, 1, &m_pDepths[DEPTH_MAP]->GetSRV());
 			X_RETURN(m_srvTables[SRV_TABLE_DEPTH], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 		}
 
+		if (m_pDepths[SHADOW_MAP])
 		{
 			const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 			descriptorTable->SetDescriptors(0, 1, &m_pDepths[SHADOW_MAP]->GetSRV());
 			X_RETURN(m_srvTables[SRV_TABLE_SHADOW], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 		}
+	}
+
+	if (m_pIrradiance)
+	{
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, 1, &m_pIrradiance->GetSRV());
+		X_RETURN(m_srvTables[SRV_TABLE_IRRADIANCE], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
 	{
@@ -970,7 +994,7 @@ void MultiRayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t 
 	pCommandList->SetComputeDescriptorTable(0, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetComputeDescriptorTable(1, m_uavTables[UAV_TABLE_CULL]);
 	pCommandList->SetComputeDescriptorTable(2, m_srvTables[SRV_TABLE_VOLUME_DESCS]);
-	pCommandList->SetCompute32BitConstant(3, NUM_SAMPLES);
+	pCommandList->SetCompute32BitConstant(3, m_maxRaySamples);
 
 	// Dispatch cube
 	const uint32_t numVolumes = m_volumeDescs->GetWidth() / sizeof(VolumeDesc);

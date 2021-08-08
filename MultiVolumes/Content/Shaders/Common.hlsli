@@ -4,6 +4,7 @@
 
 #define _HAS_DEPTH_MAP_
 #define _HAS_SHADOW_MAP_
+#define _HAS_LIGHT_PROBE_
 
 #define	INF				asfloat(0x7f800000)
 #define	FLT_MAX			3.402823466e+38
@@ -34,6 +35,7 @@ struct PerObject
 	float4x4 WorldViewProjI;
 	float4x4 ShadowWVP;
 	float4x3 WorldI;
+	float4x3 World;
 	float4x3 ToLightSpace;
 };
 
@@ -53,6 +55,9 @@ cbuffer cbPerFrame
 cbuffer cbSampleRes
 {
 	uint g_numSamples;
+#ifdef _HAS_LIGHT_PROBE_
+	uint g_hasLightProbes;
+#endif
 };
 
 //--------------------------------------------------------------------------------------

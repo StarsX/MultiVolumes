@@ -31,6 +31,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	rayOrigin.xyz = mul(rayOrigin, g_lightMapWorld);					// Light-map space to world space
 
 	min16float shadow = 1.0;
+#ifdef _HAS_LIGHT_PROBE_
+	min16float ao = 1.0;
+	float3 irradiance = 0.0;
+#endif
 
 	for (uint n = 0; n < structInfo.x; ++n)
 	{
@@ -44,7 +48,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		shadow *= ShadowTest(localRayOrigin, g_txDepth, perObject.ShadowWVP);
 #endif
 
-		float3 uvw = localRayOrigin * 0.5 + 0.5;
+		const float3 uvw = localRayOrigin * 0.5 + 0.5;
 		/*const min16float density = GetSample(uvw).w;
 		if (density < ZERO_THRESHOLD)
 		{
@@ -69,7 +73,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 			{
 				const float3 pos = localRayOrigin + rayDir * t;
 				if (any(abs(pos) > 1.0)) break;
-				uvw = LocalToTex3DSpace(pos);
+				const float3 uvw = LocalToTex3DSpace(pos);
 
 				// Get a sample along light ray
 				const min16float density = GetSample(volume.VolTexId, uvw).w;
@@ -82,9 +86,41 @@ void main(uint3 DTid : SV_DispatchThreadID)
 				t += g_stepScale;
 			}
 		}
+
+#ifdef _HAS_LIGHT_PROBE_
+		if (g_hasLightProbes)
+		{
+			float3 rayDir = -GetDensityGradient(volume.VolTexId, uvw);
+			irradiance = GetIrradiance(mul(rayDir, (float3x3)perObject.World));
+			rayDir = normalize(rayDir);
+
+			float t = g_stepScale;
+			for (uint i = 0; i < g_numSamples; ++i)
+			{
+				const float3 pos = rayOrigin.xyz + rayDir * t;
+				if (any(abs(pos) > 1.0)) break;
+				const float3 uvw = LocalToTex3DSpace(pos);
+
+				// Get a sample along light ray
+				const min16float density = GetSample(volume.VolTexId, uvw).w;
+
+				// Attenuate ray-throughput along light direction
+				ao *= 1.0 - GetOpacity(density, g_stepScale);
+				if (ao < ZERO_THRESHOLD) break;
+
+				// Update position along light ray
+				t += g_stepScale;
+			}
+		}
+#endif
 	}
 
 	const min16float3 lightColor = min16float3(g_lightColor.xyz * g_lightColor.w);
-	const min16float3 ambient = min16float3(g_ambient.xyz * g_ambient.w);
+	min16float3 ambient = min16float3(g_ambient.xyz * g_ambient.w);
+
+#ifdef _HAS_LIGHT_PROBE_
+	ambient = g_hasLightProbes ? min16float3(irradiance) * ao : ambient;
+#endif
+
 	g_rwLightMap[DTid] = lightColor * shadow + ambient;
 }
