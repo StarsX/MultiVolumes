@@ -91,6 +91,7 @@ private:
 	uint32_t m_lightGridSize;
 	uint32_t m_maxRaySamples;
 	uint32_t m_maxLightSamples;
+	uint32_t m_numVolumes;
 	std::wstring m_volumeFile;
 	std::wstring m_radianceFile;
 	std::wstring m_irradianceFile;

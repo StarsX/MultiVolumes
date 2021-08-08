@@ -62,7 +62,7 @@ MultiRayCaster::MultiRayCaster(const RayTracing::Device::sptr& device) :
 	m_pIrradiance(nullptr),
 	m_instances(),
 	m_maxRaySamples(256),
-	m_maxLightSamples(256),
+	m_maxLightSamples(128),
 	m_lightPt(75.0f, 75.0f, -75.0f),
 	m_lightColor(1.0f, 0.7f, 0.3f, 1.0f),
 	m_ambient(0.0f, 0.3f, 1.0f, 0.4f)
@@ -108,7 +108,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	for (auto i = 0u; i < numVolumes; ++i)
 	{
 		m_cubeMaps[i] = Texture2D::MakeUnique();
-		N_RETURN(m_cubeMaps[i]->Create(m_device.get(), gridSize, gridSize, Format::R8G8B8A8_UNORM, 6,
+		N_RETURN(m_cubeMaps[i]->Create(m_device.get(), gridSize, gridSize, Format::R16G16B16A16_FLOAT, 6,
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, MemoryType::DEFAULT, true,
 			(L"CubeMap" + to_wstring(i)).c_str()), false);
 

@@ -30,9 +30,10 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_isPaused(false),
 	m_tracking(false),
 	m_gridSize(128),
-	m_lightGridSize(512),
+	m_lightGridSize(256),
 	m_maxRaySamples(256),
-	m_maxLightSamples(64),
+	m_maxLightSamples(128),
+	m_numVolumes(2),
 	m_volumeFile(L""),
 	m_radianceFile(L""),
 	m_irradianceFile(L""),
@@ -156,14 +157,13 @@ void MultiVolumes::LoadAssets()
 		g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale))
 		ThrowIfFailed(E_FAIL);
 
-	const auto numVolumes = 4u;
 	const auto numVolumeSrcs = 1u;
 
 	GeometryBuffer geometry;
 	m_rayCaster = make_unique<MultiRayCaster>(m_device);
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
-		numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
+		m_numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
 		ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
@@ -495,6 +495,11 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 		{
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_maxLightSamples);
 		}
+		else if (_wcsnicmp(argv[i], L"-numVolumes", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/numVolumes", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_numVolumes);
+		}
 		else if (_wcsnicmp(argv[i], L"-irradiance", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/irradiance", wcslen(argv[i])) == 0)
 		{
@@ -533,7 +538,7 @@ void MultiVolumes::PopulateCommandList()
 	static auto isFirstFrame = true;
 	if (isFirstFrame)
 	{
-		m_objectRenderer->RenderShadow(pCommandList, m_frameIndex);
+		m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, false);
 		isFirstFrame = false;
 	}
 
@@ -557,7 +562,7 @@ void MultiVolumes::PopulateCommandList()
 	pCommandList->RSSetViewports(1, &viewport);
 	pCommandList->RSSetScissorRects(1, &scissorRect);
 
-	m_objectRenderer->Render(pCommandList, m_frameIndex);
+	m_objectRenderer->Render(pCommandList, m_frameIndex, false);
 	m_rayCaster->Render(pCommandList, m_frameIndex);
 
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);
