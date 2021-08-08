@@ -11,25 +11,16 @@
 
 #include "SharedConsts.h"
 #include "MultiVolumes.h"
+#include <DirectXColors.h>
 
 using namespace std;
 using namespace XUSG;
 using namespace XUSG::RayTracing;
 
-enum RenderMethod
-{
-	RAY_MARCH_MERGED,
-	RAY_MARCH_SEPARATE,
-	RAY_MARCH_DIRECT_MERGED,
-	RAY_MARCH_DIRECT_SEPARATE,
-
-	NUM_RENDER_METHOD
-};
-
 const float g_FOVAngleY = XM_PIDIV4;
 
-RenderMethod g_renderMethod = RAY_MARCH_SEPARATE;
-const auto g_rtFormat = Format::B8G8R8A8_UNORM;
+const auto g_backFormat = Format::B8G8R8A8_UNORM;
+const auto g_rtFormat = Format::R11G11B10_FLOAT;
 const auto g_dsFormat = Format::D32_FLOAT;
 
 MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
@@ -40,8 +31,13 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_tracking(false),
 	m_gridSize(128),
 	m_lightGridSize(512),
+	m_maxRaySamples(256),
+	m_maxLightSamples(64),
 	m_volumeFile(L""),
+	m_radianceFile(L""),
+	m_irradianceFile(L""),
 	m_meshFileName("Media/bunny.obj"),
+	m_volPosScale(0.0f, 0.0f, 0.0f, 10.0f),
 	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f)
 {
 #if defined (_DEBUG)
@@ -145,12 +141,19 @@ void MultiVolumes::LoadAssets()
 	// Create ray tracing interfaces
 	N_RETURN(m_commandList->CreateInterface(m_device.get()), ThrowIfFailed(E_FAIL));
 
+	// Clear color setting
+	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.2f };
+	m_clearColor = m_volumeFile.empty() ? m_clearColor : DirectX::Colors::CornflowerBlue;
+	m_clearColor.v = XMVectorPow(m_clearColor, XMVectorReplicate(1.0f / 1.25f));
+	m_clearColor.v = 0.7f * m_clearColor / (XMVectorReplicate(1.25f) - m_clearColor);
+
 	vector<Resource::uptr> uploaders(0);
 	//m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 100, 0);
 	m_objectRenderer = make_unique<ObjectRenderer>(m_device);
 	if (!m_objectRenderer) ThrowIfFailed(E_FAIL);
 	if (!m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
-		uploaders, m_meshFileName.c_str(), L"", L"", g_rtFormat, g_rtFormat, g_dsFormat, m_meshPosScale))
+		uploaders, m_meshFileName.c_str(), m_irradianceFile.c_str(), m_radianceFile.c_str(),
+		g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale))
 		ThrowIfFailed(E_FAIL);
 
 	const auto numVolumes = 4u;
@@ -162,6 +165,12 @@ void MultiVolumes::LoadAssets()
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
 		numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
 		ThrowIfFailed(E_FAIL);
+	const auto volumeSize = m_volPosScale.w * 2.0f;
+	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
+	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
+	m_rayCaster->SetLightMapWorld(volumeSize, volumePos);
+	m_rayCaster->SetMaxSamples(m_maxRaySamples, m_maxLightSamples);
+	m_rayCaster->SetIrradiance(m_objectRenderer->GetIrradiance());
 
 	if (m_volumeFile.empty())
 	{
@@ -223,7 +232,7 @@ void MultiVolumes::CreateSwapchain()
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
 	N_RETURN(m_swapChain->Create(m_factory.Get(), Win32Application::GetHwnd(), m_commandQueue.get(),
-		FrameCount, m_width, m_height, g_rtFormat), ThrowIfFailed(E_FAIL));
+		FrameCount, m_width, m_height, g_backFormat), ThrowIfFailed(E_FAIL));
 
 	// This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut.
 	ThrowIfFailed(m_factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
@@ -239,7 +248,7 @@ void MultiVolumes::CreateResources()
 		N_RETURN(m_renderTargets[n]->CreateFromSwapChain(m_device.get(), m_swapChain.get(), n), ThrowIfFailed(E_FAIL));
 	}
 
-	N_RETURN(m_objectRenderer->SetViewport(m_width, m_height, g_rtFormat, g_dsFormat, nullptr), ThrowIfFailed(E_FAIL));
+	N_RETURN(m_objectRenderer->SetViewport(m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
 	N_RETURN(m_rayCaster->SetDepthMaps(m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
 
 	// Set the 3D rendering viewport and scissor rectangle to target the entire window.
@@ -322,7 +331,7 @@ void MultiVolumes::OnWindowSizeChanged(int width, int height)
 	if (m_swapChain)
 	{
 		// If the swap chain already exists, resize it.
-		const auto hr = m_swapChain->ResizeBuffers(FrameCount, m_width, m_height, g_rtFormat, 0);
+		const auto hr = m_swapChain->ResizeBuffers(FrameCount, m_width, m_height, g_backFormat, 0);
 
 		if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
 		{
@@ -369,12 +378,6 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		break;
 	case VK_F1:
 		m_showFPS = !m_showFPS;
-		break;
-	case VK_LEFT:
-		g_renderMethod = static_cast<RenderMethod>((g_renderMethod + NUM_RENDER_METHOD - 1) % NUM_RENDER_METHOD);
-		break;
-	case VK_RIGHT:
-		g_renderMethod = static_cast<RenderMethod>((g_renderMethod + 1) % NUM_RENDER_METHOD);
 		break;
 	}
 }
@@ -447,13 +450,53 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 
 	for (auto i = 1; i < argc; ++i)
 	{
-		if (_wcsnicmp(argv[i], L"-gridSize", wcslen(argv[i])) == 0 ||
+		if (_wcsnicmp(argv[i], L"-mesh", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/mesh", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc)
+			{
+				m_meshFileName.resize(wcslen(argv[++i]));
+				for (size_t j = 0; j < m_meshFileName.size(); ++j)
+					m_meshFileName[j] = static_cast<char>(argv[i][j]);
+			}
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_meshPosScale.x);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_meshPosScale.y);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_meshPosScale.z);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_meshPosScale.w);
+		}
+		else if (_wcsnicmp(argv[i], L"-gridSize", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/gridSize", wcslen(argv[i])) == 0)
-			m_gridSize = ++i < argc ? static_cast<uint32_t>(_wtof(argv[i])) : m_gridSize;
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_gridSize);
+		}
 		else if (_wcsnicmp(argv[i], L"-volume", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/volume", wcslen(argv[i])) == 0)
 		{
-			m_volumeFile = ++i < argc ? argv[i] : m_volumeFile;
+			m_volumeFile = i + 1 < argc ? argv[++i] : m_volumeFile;
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.x);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.y);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.z);
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.w);
+		}
+		else if (_wcsnicmp(argv[i], L"-maxRaySamples", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/maxRaySamples", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_maxRaySamples);
+		}
+		else if (_wcsnicmp(argv[i], L"-maxLightSamples", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/maxLightSamples", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_maxLightSamples);
+		}
+		else if (_wcsnicmp(argv[i], L"-irradiance", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/irradiance", wcslen(argv[i])) == 0)
+		{
+			m_irradianceFile = i + 1 < argc ? argv[++i] : m_irradianceFile;
+		}
+		else if (_wcsnicmp(argv[i], L"-radiance", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/radiance", wcslen(argv[i])) == 0)
+		{
+			m_radianceFile = i + 1 < argc ? argv[++i] : m_radianceFile;
 		}
 	}
 }
@@ -488,19 +531,18 @@ void MultiVolumes::PopulateCommandList()
 	}
 
 	ResourceBarrier barriers[3];
+	const auto pColor = m_objectRenderer->GetRenderTarget();
 	const auto pDepth = m_objectRenderer->GetDepthMap(ObjectRenderer::DEPTH_MAP);
 	const auto pShadow = m_objectRenderer->GetDepthMap(ObjectRenderer::SHADOW_MAP);
-	auto numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);
+	auto numBarriers = pColor->SetBarrier(barriers, ResourceState::RENDER_TARGET);
 	numBarriers = pDepth->SetBarrier(barriers, ResourceState::DEPTH_WRITE, numBarriers);
 	numBarriers = pShadow->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Clear render target
-	const float clearColor[4] = { 0.2f, 0.2f, 0.2f, 0.0f };
-	pCommandList->ClearRenderTargetView(m_renderTargets[m_frameIndex]->GetRTV(), clearColor);
+	pCommandList->ClearRenderTargetView(pColor->GetRTV(), m_clearColor);
 	pCommandList->ClearDepthStencilView(pDepth->GetDSV(), ClearFlag::DEPTH, 1.0f);
-
-	pCommandList->OMSetRenderTargets(1, &m_renderTargets[m_frameIndex]->GetRTV(), &pDepth->GetDSV());
+	pCommandList->OMSetRenderTargets(1, &pColor->GetRTV(), &pDepth->GetDSV());
 
 	// Set viewport
 	Viewport viewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
@@ -510,6 +552,13 @@ void MultiVolumes::PopulateCommandList()
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex);
 	m_rayCaster->Render(pCommandList, m_frameIndex);
+
+	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);
+	numBarriers = pColor->SetBarrier(barriers, ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
+	pCommandList->Barrier(numBarriers, barriers);
+	pCommandList->OMSetRenderTargets(1, &m_renderTargets[m_frameIndex]->GetRTV());
+
+	m_objectRenderer->ToneMap(pCommandList);
 	
 	// Indicate that the back buffer will now be used to present.
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::PRESENT);
@@ -575,23 +624,6 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 		windowText << L"    fps: ";
 		if (m_showFPS) windowText << setprecision(2) << fixed << fps;
 		else windowText << L"[F1]";
-
-		windowText << L"    [\x2190][\x2192] ";
-		switch (g_renderMethod)
-		{
-		case RAY_MARCH_MERGED:
-			windowText << L"Cubemap-space ray marching without separate lighting pass";
-			break;
-		case RAY_MARCH_SEPARATE:
-			windowText << L"Cubemap-space ray marching with separate lighting pass";
-			break;
-		case RAY_MARCH_DIRECT_MERGED:
-			windowText << L"Direct screen-space ray marching without separate lighting pass";
-			break;
-		case RAY_MARCH_DIRECT_SEPARATE:
-			windowText << L"Direct screen-space ray marching with separate lighting pass";
-			break;
-		}
 
 		SetCustomWindowText(windowText.str().c_str());
 	}

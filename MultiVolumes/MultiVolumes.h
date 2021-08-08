@@ -89,9 +89,15 @@ private:
 	// User external settings
 	uint32_t m_gridSize;
 	uint32_t m_lightGridSize;
+	uint32_t m_maxRaySamples;
+	uint32_t m_maxLightSamples;
 	std::wstring m_volumeFile;
+	std::wstring m_radianceFile;
+	std::wstring m_irradianceFile;
 	std::string m_meshFileName;
+	XMFLOAT4 m_volPosScale;
 	XMFLOAT4 m_meshPosScale;
+	XMVECTORF32 m_clearColor;
 
 	void LoadPipeline();
 	void LoadAssets();
