@@ -168,7 +168,7 @@ void MultiVolumes::LoadAssets()
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
-	m_rayCaster->SetLightMapWorld(volumeSize, volumePos);
+	m_rayCaster->SetLightMapWorld(80.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 	m_rayCaster->SetMaxSamples(m_maxRaySamples, m_maxLightSamples);
 	m_rayCaster->SetIrradiance(m_objectRenderer->GetIrradiance());
 
@@ -269,7 +269,14 @@ void MultiVolumes::OnUpdate()
 	timeStep = m_isPaused ? 0.0f : timeStep;
 	time = totalTime - pauseTime;
 
-	m_rayCaster->SetLightMapWorld(80.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
+	const XMFLOAT3 lightPt(75.0f, 75.0f, -75.0f);
+	const XMFLOAT3 lightColor(1.0f, 0.7f, 0.3f);
+	const XMFLOAT3 ambientColor(0.4f, 0.6f, 1.0f);
+	const auto lightIntensity = 2.0f, ambientIntensity = 0.4f;
+	m_objectRenderer->SetLight(lightPt, lightColor, lightIntensity);
+	m_objectRenderer->SetAmbient(ambientColor, ambientIntensity);
+	m_rayCaster->SetLight(lightPt, lightColor, lightIntensity);
+	m_rayCaster->SetAmbient(ambientColor, ambientIntensity);
 
 	// View
 	//const auto eyePt = XMLoadFloat3(&m_eyePt);
