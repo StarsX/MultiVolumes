@@ -2,9 +2,8 @@
 // Copyright (c) XU, Tianchen. All rights reserved.
 //--------------------------------------------------------------------------------------
 
+#include "SharedConsts.h"
 #include "Common.hlsli"
-
-#define GROUP_VOLUME_COUNT 8
 
 //--------------------------------------------------------------------------------------
 // Structs
@@ -77,13 +76,15 @@ float EstimateCubeEdgePixelSize(float2 v, uint edgeId, uint baseLaneId)
 	return length(v1 - v0);
 }
 
-float EstimateMaxCubeEdgePixelSize(float2 v, uint2 gTid)
+float EstimateMaxCubeEdgePixelSize(float2 v, uint2 wTid)
 {
+	static const uint waveVolumeCount = WaveGetLaneCount() / 8;
+
 	// Per edge processing
-	if (gTid.x < 6)
+	if (wTid.x < 6)
 	{
-		const uint baseEdgeId = 2 * gTid.x;
-		const uint baseLaneId = 8 * gTid.y;
+		const uint baseEdgeId = 2 * wTid.x;
+		const uint baseLaneId = 8 * wTid.y;
 		float2 s;
 
 		[unroll]
@@ -92,11 +93,10 @@ float EstimateMaxCubeEdgePixelSize(float2 v, uint2 gTid)
 
 		const float ms = max(s.x, s.y);
 
-		[unroll]
-		for (i = 0; i < GROUP_VOLUME_COUNT; ++i)
+		for (i = 0; i < waveVolumeCount; ++i)
 		{
 			[branch]
-			if (i == gTid.y) return WaveActiveMax(ms);
+			if (i == wTid.y) return WaveActiveMax(ms);
 		}
 	}
 
@@ -104,12 +104,12 @@ float EstimateMaxCubeEdgePixelSize(float2 v, uint2 gTid)
 }
 
 uint EstimateCubeMapLOD(inout uint raySampleCount, uint numMips, float cubeMapSize,
-	float2 v, uint2 gTid, float upscale = 2.0, float raySampleCountScale = 2.0)
+	float2 v, uint2 wTid, float upscale = 2.0, float raySampleCountScale = 2.0)
 {
 	// Calulate the ideal cube-map resolution
-	float s = EstimateMaxCubeEdgePixelSize(v, gTid) / upscale;
+	float s = EstimateMaxCubeEdgePixelSize(v, wTid) / upscale;
 
-	if (gTid.x == 0)
+	if (wTid.x == 0)
 	{
 		// Get the ideal ray sample amount
 		float raySampleAmt = raySampleCountScale * s / sqrt(3.0);
@@ -142,19 +142,19 @@ bool IsFaceVisible(uint face, float3 localSpaceEyePt)
 	return (face & 0x1) ? viewComp > -1.0 : viewComp < 1.0;
 }
 
-uint GenVisibilityMask(float4x3 worldI, float3 eyePt, uint2 gTid)
+uint GenVisibilityMask(float4x3 worldI, float3 eyePt, uint2 wTid)
 {
 	// Per face processing
-	if (gTid.x < 6)
+	bool isVisible = false;
+	if (wTid.x < 6)
 	{
 		const float3 localSpaceEyePt = mul(float4(eyePt, 1.0), worldI);
-		const bool isVisible = IsFaceVisible(gTid.x, localSpaceEyePt);
-		const uint waveMask = WaveActiveBallot(isVisible).x;
-
-		return (waveMask >> gTid.y) & 0xff;
+		isVisible = IsFaceVisible(wTid.x, localSpaceEyePt);
 	}
 
-	return 0;
+	const uint waveMask = WaveActiveBallot(isVisible).x;
+
+	return (waveMask >> wTid.y) & 0xff;
 }
 
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
@@ -168,31 +168,35 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 
 	const PerObject perObject = g_roPerObject[volumeId];
 
+	uint2 wTid;
+	wTid.x = WaveGetLaneIndex() % 8;
+	wTid.y = WaveGetLaneIndex() / 8;
+
 	// Project vertex to viewport space
-	const float4 v = ProjectToViewport(GTid.x, perObject.WorldViewProj, g_viewport);
+	const float4 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
 
 	// If any vertices are inside viewport
 	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0);
 	const uint waveMask = WaveActiveBallot(isInView).x;
-	const uint volumeVis = (waveMask >> GTid.y) & 0xff;
-	//if (GTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
+	const uint volumeVis = (waveMask >> wTid.y) & 0xff;
+	//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
 
 	// Viewport-visibility culling
 	if (volumeVis == 0) return;
 
 	VolumeIn volumeIn;
 	uint raySampleCount;
-	if (GTid.x == 0)
+	if (wTid.x == 0)
 	{
 		volumeIn = g_roVolumes[volumeId];
 		raySampleCount = g_numSamples;
 	}
 
 	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
-		volumeIn.NumMips, volumeIn.CubeMapSize, v.xy, GTid);
-	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, GTid);
+		volumeIn.NumMips, volumeIn.CubeMapSize, v.xy, wTid);
+	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid);
 
-	if (GTid.x == 0)
+	if (wTid.x == 0)
 	{
 		VolumeOut volumeOut;
 		volumeOut.VolumeId = volumeId;

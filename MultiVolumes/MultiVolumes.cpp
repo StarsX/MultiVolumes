@@ -153,7 +153,7 @@ void MultiVolumes::LoadAssets()
 		uploaders, m_meshFileName.c_str(), g_rtFormat, g_dsFormat, m_meshPosScale))
 		ThrowIfFailed(E_FAIL);
 
-	const auto numVolumes = 1u;
+	const auto numVolumes = 4u;
 	const auto numVolumeSrcs = 1u;
 
 	GeometryBuffer geometry;
@@ -210,7 +210,7 @@ void MultiVolumes::LoadAssets()
 	// View initialization
 	{
 		m_focusPt = XMFLOAT3(0.0f, 0.0f, 0.0f);
-		m_eyePt = XMFLOAT3(4.0f, 16.0f, -40.0f);
+		m_eyePt = XMFLOAT3(4.0f, 16.0f, -80.0f);
 		const auto focusPt = XMLoadFloat3(&m_focusPt);
 		const auto eyePt = XMLoadFloat3(&m_eyePt);
 		const auto view = XMMatrixLookAtLH(eyePt, focusPt, XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));

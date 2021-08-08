@@ -24,7 +24,8 @@ public:
 	bool SetViewport(uint32_t width, uint32_t height);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
-	void SetVolumeWorld(float size, const DirectX::XMFLOAT3& pos);
+	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);
+	void SetVolumeWorld(uint32_t i, float size, const DirectX::XMFLOAT3& pos);
 	void SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos);
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
@@ -176,6 +177,6 @@ protected:
 	DirectX::XMFLOAT3		m_lightPt;
 	DirectX::XMFLOAT4		m_lightColor;
 	DirectX::XMFLOAT4		m_ambient;
-	DirectX::XMFLOAT3X4		m_volumeWorld;
 	DirectX::XMFLOAT3X4		m_lightMapWorld;
+	std::vector<DirectX::XMFLOAT3X4> m_volumeWorlds;
 };

@@ -74,7 +74,7 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 // Compute Shader
 //--------------------------------------------------------------------------------------
 [numthreads(8, 4, 6)]
-void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID)
+void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID)
 {
 	VisibleVolume volumeInfo = g_roVisibleVolumes[Gid.z];
 	volumeInfo.FaceMask = WaveReadLaneFirst(volumeInfo.FaceMask);
@@ -88,15 +88,16 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	volumeInfo.Mip_SCnt = WaveReadLaneFirst(volumeInfo.Mip_SCnt);
 	const uint mipLevel = volumeInfo.Mip_SCnt >> 16;
 	const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolumeId + mipLevel;
-	const float3 target = GetLocalPos(DTid.xy, GTid.z, g_rwCubeMaps[uavIdx]);
+	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
 	const float3 rayDir = normalize(target - rayOrigin);
 	const bool isHit = ComputeRayOrigin(rayOrigin, rayDir);
 	if (!isHit) return;
 
+	const uint3 index = uint3(DTid, GTid.z);
 #ifdef _HAS_DEPTH_MAP_
 	// Calculate occluded end point
 	const float3 pos = GetClipPos(rayOrigin, rayDir, perObject.WorldViewProj);
-	g_rwCubeDepths[uavIdx][DTid] = pos.z;
+	g_rwCubeDepths[uavIdx][index] = pos.z;
 	const float tMax = GetTMax(pos, rayOrigin, rayDir, perObject.WorldViewProjI);
 #endif
 
@@ -147,5 +148,5 @@ void main(uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 #endif
 	}
 
-	g_rwCubeMaps[uavIdx][DTid] = float4(scatter, 1.0 - transm);
+	g_rwCubeMaps[uavIdx][index] = float4(scatter, 1.0 - transm);
 }
