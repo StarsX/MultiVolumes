@@ -23,9 +23,12 @@ const auto g_backFormat = Format::B8G8R8A8_UNORM;
 const auto g_rtFormat = Format::R11G11B10_FLOAT;
 const auto g_dsFormat = Format::D32_FLOAT;
 
+static auto g_updateLight = true;
+
 MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
+	m_showMesh(false),
 	m_showFPS(true),
 	m_isPaused(false),
 	m_tracking(false),
@@ -386,6 +389,10 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 	case VK_F1:
 		m_showFPS = !m_showFPS;
 		break;
+	case 'M':
+		m_showMesh = !m_showMesh;
+		g_updateLight = true;
+		break;
 	}
 }
 
@@ -535,12 +542,7 @@ void MultiVolumes::PopulateCommandList()
 	};
 	pCommandList->SetDescriptorPools(static_cast<uint32_t>(size(descriptorPools)), descriptorPools);
 
-	static auto isFirstFrame = true;
-	if (isFirstFrame)
-	{
-		m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, false);
-		isFirstFrame = false;
-	}
+	if (g_updateLight) m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
 
 	ResourceBarrier barriers[3];
 	const auto pColor = m_objectRenderer->GetRenderTarget();
@@ -562,8 +564,9 @@ void MultiVolumes::PopulateCommandList()
 	pCommandList->RSSetViewports(1, &viewport);
 	pCommandList->RSSetScissorRects(1, &scissorRect);
 
-	m_objectRenderer->Render(pCommandList, m_frameIndex, false);
-	m_rayCaster->Render(pCommandList, m_frameIndex);
+	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
+	m_rayCaster->Render(pCommandList, m_frameIndex, g_updateLight);
+	g_updateLight = false;
 
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);
 	numBarriers = pColor->SetBarrier(barriers, ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
@@ -636,6 +639,8 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 		windowText << L"    fps: ";
 		if (m_showFPS) windowText << setprecision(2) << fixed << fps;
 		else windowText << L"[F1]";
+
+		windowText << L"    [M] Show/hide mesh";
 
 		SetCustomWindowText(windowText.str().c_str());
 	}

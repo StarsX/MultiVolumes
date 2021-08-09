@@ -338,15 +338,9 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 	}
 }
 
-void MultiRayCaster::Render(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::Render(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool updateLight)
 {
-	static auto isFirstFrame = true;
-	if (isFirstFrame)
-	{
-		RayMarchL(pCommandList, frameIndex);
-		isFirstFrame = false;
-	}
-
+	if (updateLight) RayMarchL(pCommandList, frameIndex);
 	cullVolumes(pCommandList, frameIndex);
 	rayMarchV(pCommandList, frameIndex);
 	cubeDepthPeel(pCommandList, frameIndex);

@@ -36,8 +36,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	float3 irradiance = 0.0;
 #endif
 
-	// Find the start volume
-	uint startVolume = 0xffffffff;
+	// Find the volume of which the current position is nonempty
+	bool hasDensity = false;
 	float3 uvw = 0.0;
 	PerObject perObject;
 	VolumeDesc volume;
@@ -50,14 +50,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		uvw = LocalToTex3DSpace(localRayOrigin);
 		volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
 		const min16float density = GetSample(volume.VolTexId, uvw).w;
-		if (density >= ZERO_THRESHOLD)
-		{
-			startVolume = n;
-			break;
-		}
+		hasDensity = density >= ZERO_THRESHOLD;
+
+		if (hasDensity) break;
 	}
 
-	if (startVolume != 0xffffffff)
+	if (hasDensity)
 	{
 		float3 aoRayDir = 0.0;
 #ifdef _HAS_LIGHT_PROBE_
