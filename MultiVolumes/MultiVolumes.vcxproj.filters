@@ -196,9 +196,4 @@
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
-  <ItemGroup>
-    <CustomBuild Include="Content\Shaders\RayTracing.hlsl">
-      <Filter>Shaders\RayCaster</Filter>
-    </CustomBuild>
-  </ItemGroup>
 </Project>

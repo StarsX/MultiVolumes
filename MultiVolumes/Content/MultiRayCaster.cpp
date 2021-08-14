@@ -23,6 +23,7 @@ struct CBPerFrame
 	XMFLOAT4 EyePos;
 	XMFLOAT4 Viewport;
 	XMFLOAT3X4 LightMapWorld;
+	XMFLOAT4X4 ShadowViewProj;
 	XMFLOAT4 LightPos;
 	XMFLOAT4 LightColor;
 	XMFLOAT4 Ambient;
@@ -32,7 +33,6 @@ struct PerObject
 {
 	XMFLOAT4X4 WorldViewProj;
 	XMFLOAT4X4 WorldViewProjI;
-	XMFLOAT4X4 ShadowWVP;
 	XMFLOAT3X4 WorldI;
 	XMFLOAT3X4 World;
 	XMFLOAT3X4 LocalToLight;
@@ -163,14 +163,15 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		DDS::Loader textureLoader;
 		DDS::AlphaMode alphaMode;
 
+		if (i >= m_fileSrcs.size()) m_fileSrcs.resize(i + 1);
 		uploaders.emplace_back(Resource::MakeUnique());
 		N_RETURN(textureLoader.CreateTextureFromFile(m_device.get(), pCommandList, fileName,
-			8192, false, m_fileSrc, uploaders.back().get(), &alphaMode), false);
+			8192, false, m_fileSrcs[i], uploaders.back().get(), &alphaMode), false);
 	}
 
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_fileSrc->GetSRV());
+		descriptorTable->SetDescriptors(0, 1, &m_fileSrcs[i]->GetSRV());
 		X_RETURN(m_srvTables[SRV_TABLE_FILE_SRC], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
@@ -297,7 +298,7 @@ void MultiRayCaster::SetAmbient(const XMFLOAT3& color, float intensity)
 	m_ambient = XMFLOAT4(color.x, color.y, color.z, intensity);
 }
 
-void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATRIX shadowVP, const XMFLOAT3& eyePt)
+void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT4X4& shadowVP, const XMFLOAT3& eyePt)
 {
 	const auto& depth = m_pDepths[DEPTH_MAP];
 	const auto width = static_cast<float>(depth->GetWidth());
@@ -309,6 +310,7 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 		pCbData->EyePos = XMFLOAT4(eyePt.x, eyePt.y, eyePt.z, 1.0f);
 		pCbData->Viewport = XMFLOAT4(width, height, 0.0f, 0.0f);
 		pCbData->LightMapWorld = m_lightMapWorld;
+		pCbData->ShadowViewProj = shadowVP;
 		pCbData->LightPos = XMFLOAT4(m_lightPt.x, m_lightPt.y, m_lightPt.z, 1.0f);
 		pCbData->LightColor = m_lightColor;
 		pCbData->Ambient = m_ambient;
@@ -330,7 +332,6 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, CXMMATR
 
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProj, XMMatrixTranspose(worldViewProj));
 			XMStoreFloat4x4(&pMappedData[i].WorldViewProjI, XMMatrixTranspose(XMMatrixInverse(nullptr, worldViewProj)));
-			XMStoreFloat4x4(&pMappedData[i].ShadowWVP, XMMatrixTranspose(world * shadowVP));
 			XMStoreFloat3x4(&pMappedData[i].WorldI, worldI);
 			XMStoreFloat3x4(&pMappedData[i].World, world);
 			XMStoreFloat3x4(&pMappedData[i].LocalToLight, localToLight);
@@ -417,9 +418,11 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 
 	{
 		vector<VolumeDesc> volumeDescs(numVolumes);
-		for (auto& volume : volumeDescs)
+		for (auto i = 0u; i < volumeDescs.size(); ++i)
 		{
-			volume.VolTexId = rand() % numVolumeSrcs;
+			auto& volume = volumeDescs[i];
+			//volume.VolTexId = rand() % numVolumeSrcs;
+			volume.VolTexId = i % numVolumeSrcs;
 			volume.NumMips = g_numCubeMips;
 			volume.CubeMapSize = static_cast<float>(m_gridSize);
 		}

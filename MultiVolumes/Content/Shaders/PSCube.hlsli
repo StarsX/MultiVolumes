@@ -53,7 +53,7 @@ min16float2 GetDomain(float2 uv, float3 pos, float3 rayDir, float2 gridSize)
 min16float4 CubeCast(uint2 idx, float3 uvw, float3 pos, float3 rayDir, uint uavIdx)
 {
 	float2 gridSize;
-	const TextureCube txCubeMap = g_txCubeMaps[uavIdx];
+	const TextureCube txCubeMap = g_txCubeMaps[NonUniformResourceIndex(uavIdx)];
 	txCubeMap.GetDimensions(gridSize.x, gridSize.y);
 	float2 uv = uvw.xy;
 	uvw = pos;
@@ -68,7 +68,7 @@ min16float4 CubeCast(uint2 idx, float3 uvw, float3 pos, float3 rayDir, uint uavI
 	};
 
 #ifdef _HAS_DEPTH_MAP_
-	const float4 z = g_txCubeDepths[uavIdx].Gather(g_smpLinear, uvw);
+	const float4 z = g_txCubeDepths[NonUniformResourceIndex(uavIdx)].Gather(g_smpLinear, uvw);
 	float depth = g_txDepth[idx];
 #endif
 
