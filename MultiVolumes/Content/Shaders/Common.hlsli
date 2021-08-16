@@ -33,7 +33,6 @@ struct PerObject
 {
 	float4x4 WorldViewProj;
 	float4x4 WorldViewProjI;
-	float4x4 ShadowWVP;
 	float4x3 WorldI;
 	float4x3 World;
 	float4x3 ToLightSpace;
@@ -47,6 +46,7 @@ cbuffer cbPerFrame
 	float3 g_eyePt;
 	float2 g_viewport;
 	float4x3 g_lightMapWorld;
+	float4x4 g_shadowViewProj;
 	float4 g_lightPos;
 	float4 g_lightColor;
 	float4 g_ambient;

@@ -30,7 +30,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
 	rayOrigin.xyz = mul(rayOrigin, g_lightMapWorld);	// Light-map space to world space
 
+#ifdef _HAS_SHADOW_MAP_
+	min16float shadow = ShadowTest(rayOrigin.xyz, g_txDepth);
+#else
 	min16float shadow = 1.0;
+#endif
+
 #ifdef _HAS_LIGHT_PROBE_
 	min16float ao = 1.0;
 	float3 irradiance = 0.0;
@@ -44,15 +49,19 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	for (uint n = 0; n < structInfo.x; ++n)
 	{
 		perObject = g_roPerObject[n];
-		volume = g_roVolumes[n];
-
 		const float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
-		uvw = LocalToTex3DSpace(localRayOrigin);
-		volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
-		const min16float density = GetSample(volume.VolTexId, uvw).w;
-		hasDensity = density >= ZERO_THRESHOLD;
 
-		if (hasDensity) break;
+		if (all(abs(localRayOrigin) <= 1.0))
+		{
+			volume = g_roVolumes[n];
+			uvw = LocalToTex3DSpace(localRayOrigin);
+			volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
+
+			const min16float density = GetSample(volume.VolTexId, uvw).w;
+			hasDensity = density >= ZERO_THRESHOLD;
+
+			if (hasDensity) break;
+		}
 	}
 
 	if (hasDensity)
@@ -70,44 +79,35 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		for (n = 0; n < structInfo.x; ++n)
 		{
 			const PerObject perObject = g_roPerObject[n];
-			VolumeDesc volume = g_roVolumes[n];
+			float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
 
-			const float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
-
-			// Transmittance
-#ifdef _HAS_SHADOW_MAP_
-			shadow *= ShadowTest(localRayOrigin, g_txDepth, perObject.ShadowWVP);
-#endif
-
-			const float3 uvw = LocalToTex3DSpace(localRayOrigin);
-
-#ifdef _POINT_LIGHT_
-			const float3 localSpaceLightPt = mul(g_lightPos, perObject.WorldI);
-			const float3 rayDir = normalize(localSpaceLightPt - localRayOrigin);
-#else
-			const float3 localSpaceLightPt = mul(g_lightPos.xyz, (float3x3)perObject.WorldI);
-			const float3 rayDir = normalize(localSpaceLightPt);
-#endif
-
-			volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
-
-			if (shadow > 0.0)
+			if (shadow >= ZERO_THRESHOLD)
 			{
+#ifdef _POINT_LIGHT_
+				const float3 localSpaceLightPt = mul(g_lightPos, perObject.WorldI);
+				const float3 rayDir = normalize(localSpaceLightPt - localRayOrigin);
+#else
+				const float3 localSpaceLightPt = mul(g_lightPos.xyz, (float3x3)perObject.WorldI);
+				const float3 rayDir = normalize(localSpaceLightPt);
+#endif
+				// Transmittance
+				if (!ComputeRayOrigin(localRayOrigin, rayDir)) continue;
+				VolumeDesc volume = g_roVolumes[n];
+				volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
+
 				float t = g_stepScale;
 				for (uint i = 0; i < g_numSamples; ++i)
 				{
 					const float3 pos = localRayOrigin + rayDir * t;
-					if (any(abs(pos) <= 1.0))
-					{
-						const float3 uvw = LocalToTex3DSpace(pos);
+					if (any(abs(pos) > 1.0)) break;
+					const float3 uvw = LocalToTex3DSpace(pos);
 
-						// Get a sample along light ray
-						const min16float density = GetSample(volume.VolTexId, uvw).w;
+					// Get a sample along light ray
+					const min16float density = GetSample(volume.VolTexId, uvw).w;
 
-						// Attenuate ray-throughput along light direction
-						shadow *= 1.0 - GetOpacity(density, g_stepScale);
-						if (shadow < ZERO_THRESHOLD) break;
-					}
+					// Attenuate ray-throughput along light direction
+					shadow *= 1.0 - GetOpacity(density, g_stepScale);
+					if (shadow < ZERO_THRESHOLD) break;
 
 					// Update position along light ray
 					t += g_stepScale;
@@ -121,17 +121,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
 				for (uint i = 0; i < g_numSamples; ++i)
 				{
 					const float3 pos = localRayOrigin.xyz + aoRayDir * t;
-					if (any(abs(pos) <= 1.0))
-					{
-						const float3 uvw = LocalToTex3DSpace(pos);
+					if (any(abs(pos) > 1.0)) break;
+					const float3 uvw = LocalToTex3DSpace(pos);
 
-						// Get a sample along light ray
-						const min16float density = GetSample(volume.VolTexId, uvw).w;
+					// Get a sample along light ray
+					const min16float density = GetSample(volume.VolTexId, uvw).w;
 
-						// Attenuate ray-throughput along light direction
-						ao *= 1.0 - GetOpacity(density, g_stepScale);
-						if (ao < ZERO_THRESHOLD) break;
-					}
+					// Attenuate ray-throughput along light direction
+					ao *= 1.0 - GetOpacity(density, g_stepScale);
+					if (ao < ZERO_THRESHOLD) break;
 
 					// Update position along light ray
 					t += g_stepScale;

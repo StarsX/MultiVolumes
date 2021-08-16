@@ -104,9 +104,9 @@ float GetTMax(float3 pos, float3 rayOrigin, float3 rayDir, matrix worldViewProjI
 // Get occluded end point
 //--------------------------------------------------------------------------------------
 #ifdef _HAS_SHADOW_MAP_
-min16float ShadowTest(float3 pos, Texture2D<float> txDepth, matrix shadowWVP)
+min16float ShadowTest(float3 pos, Texture2D<float> txDepth)
 {
-	const float3 lsPos = mul(float4(pos, 1.0), shadowWVP).xyz;
+	const float3 lsPos = mul(float4(pos, 1.0), g_shadowViewProj).xyz;
 	float2 shadowUV = lsPos.xy * 0.5 + 0.5;
 	shadowUV.y = 1.0 - shadowUV.y;
 

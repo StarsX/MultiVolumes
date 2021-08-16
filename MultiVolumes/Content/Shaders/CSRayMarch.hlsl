@@ -112,6 +112,8 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	min16float3 scatter = 0.0;
 
 	float t = 0.0;
+	min16float opacity = 0.0;
+	min16float stepScl = stepScale;
 	for (uint i = 0; i < numSamples; ++i)
 	{
 		const float3 pos = rayOrigin + rayDir * t;
@@ -128,10 +130,10 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 			const float3 light = GetLight(pos, perObject.ToLightSpace);
 
 			// Accumulate color
-			color.w = GetOpacity(color.w, stepScale);
+			color.w = GetOpacity(color.w, stepScl);
 			color.xyz *= transm;
 #ifdef _PRE_MULTIPLIED_
-			color.xyz = GetPremultiplied(color.xyz, g_stepScale);
+			color.xyz = GetPremultiplied(color.xyz, stepScl);
 #else
 			color.xyz *= color.w;
 #endif
@@ -144,7 +146,9 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 			if (transm < ZERO_THRESHOLD) break;
 		}
 
-		t += max(1.5 * stepScale * t, stepScale);
+		stepScl = min16float(max(1.5 * stepScale * t, stepScale));
+		stepScl *= clamp(1.0 - (color.w - opacity) * 8.0, 1e-5, 2.0);
+		t += stepScale;
 #ifdef _HAS_DEPTH_MAP_
 		if (t > tMax) break;
 #endif

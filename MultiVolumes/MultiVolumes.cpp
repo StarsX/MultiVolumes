@@ -28,6 +28,7 @@ static auto g_updateLight = true;
 MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
+	m_animate(false),
 	m_showMesh(false),
 	m_showFPS(true),
 	m_isPaused(false),
@@ -37,12 +38,12 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_maxRaySamples(256),
 	m_maxLightSamples(128),
 	m_numVolumes(2),
-	m_volumeFile(L""),
 	m_radianceFile(L""),
 	m_irradianceFile(L""),
 	m_meshFileName("Media/bunny.obj"),
 	m_volPosScale(0.0f, 0.0f, 0.0f, 10.0f),
-	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f)
+	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f),
+	m_lightMapScale(40.0f)
 {
 #if defined (_DEBUG)
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -51,6 +52,17 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	freopen_s(&stream, "CONOUT$", "w+t", stdout);
 	freopen_s(&stream, "CONIN$", "r+t", stdin);
 #endif
+
+	m_volumeFiles[0] = L"Media/bunny.dds";
+	m_volumeFiles[1] = L"Media/buddha.dds";
+	m_volumeFiles[2] = L"Media/dragon.dds";
+	m_volumeFiles[3] = L"Media/Eagle.dds";
+	m_volumeFiles[4] = L"Media/Jacquemart.dds";
+	m_volumeFiles[5] = L"Media/lucy.dds";
+	m_volumeFiles[6] = L"Media/penelope.dds";
+	m_volumeFiles[7] = L"Media/Cloud1.dds";
+	m_volumeFiles[8] = L"Media/Cloud2.dds";
+	m_volumeFiles[9] = L"Media/Devil.dds";
 }
 
 MultiVolumes::~MultiVolumes()
@@ -147,12 +159,12 @@ void MultiVolumes::LoadAssets()
 
 	// Clear color setting
 	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.2f };
-	m_clearColor = m_volumeFile.empty() ? m_clearColor : DirectX::Colors::CornflowerBlue;
+	m_clearColor = m_volumeFiles->empty() ? m_clearColor : DirectX::Colors::CornflowerBlue;
 	m_clearColor.v = XMVectorPow(m_clearColor, XMVectorReplicate(1.0f / 1.25f));
 	m_clearColor.v = 0.7f * m_clearColor / (XMVectorReplicate(1.25f) - m_clearColor);
 
 	vector<Resource::uptr> uploaders(0);
-	//m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 100, 0);
+	m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);
 	m_objectRenderer = make_unique<ObjectRenderer>(m_device);
 	if (!m_objectRenderer) ThrowIfFailed(E_FAIL);
 	if (!m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
@@ -160,7 +172,7 @@ void MultiVolumes::LoadAssets()
 		g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale))
 		ThrowIfFailed(E_FAIL);
 
-	const auto numVolumeSrcs = 1u;
+	const auto numVolumeSrcs = static_cast<uint32_t>(size(m_volumeFiles));
 
 	GeometryBuffer geometry;
 	m_rayCaster = make_unique<MultiRayCaster>(m_device);
@@ -171,11 +183,11 @@ void MultiVolumes::LoadAssets()
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
-	m_rayCaster->SetLightMapWorld(80.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
+	m_rayCaster->SetLightMapWorld(m_lightMapScale * 2.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 	m_rayCaster->SetMaxSamples(m_maxRaySamples, m_maxLightSamples);
 	m_rayCaster->SetIrradiance(m_objectRenderer->GetIrradiance());
 
-	if (m_volumeFile.empty())
+	if (m_volumeFiles->empty())
 	{
 		for (auto i = 0u; i < numVolumeSrcs; ++i)
 			m_rayCaster->InitVolumeData(pCommandList, i);
@@ -183,7 +195,7 @@ void MultiVolumes::LoadAssets()
 	else
 	{
 		for (auto i = 0u; i < numVolumeSrcs; ++i)
-			m_rayCaster->LoadVolumeData(pCommandList, i, m_volumeFile.c_str(), uploaders);
+			m_rayCaster->LoadVolumeData(pCommandList, i, m_volumeFiles[i].c_str(), uploaders);
 	}
 
 	// Close the command list and execute it to begin the initial GPU setup.
@@ -271,6 +283,18 @@ void MultiVolumes::OnUpdate()
 	pauseTime = m_isPaused ? totalTime - time : pauseTime;
 	timeStep = m_isPaused ? 0.0f : timeStep;
 	time = totalTime - pauseTime;
+
+	// Auto camera animation
+	if (m_animate)
+	{
+		const auto tParam = static_cast<float>(time * 0.5);
+		const auto r = 60.0f;
+		m_eyePt = XMFLOAT3(sinf(tParam) * r, 6.0f, cosf(tParam) * r);
+		const auto focusPt = XMLoadFloat3(&m_focusPt);
+		const auto eyePt = XMLoadFloat3(&m_eyePt);
+		const auto view = XMMatrixLookAtLH(eyePt, focusPt, XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));
+		XMStoreFloat4x4(&m_view, view);
+	}
 
 	const XMFLOAT3 lightPt(75.0f, 75.0f, -75.0f);
 	const XMFLOAT3 lightColor(1.0f, 0.7f, 0.3f);
@@ -389,6 +413,9 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 	case VK_F1:
 		m_showFPS = !m_showFPS;
 		break;
+	case 'A':
+		m_animate = !m_animate;
+		break;
 	case 'M':
 		m_showMesh = !m_showMesh;
 		g_updateLight = true;
@@ -483,14 +510,24 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 		{
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_gridSize);
 		}
+		else if (_wcsnicmp(argv[i], L"-lightGridSize", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/lightGridSize", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_lightGridSize);
+		}
 		else if (_wcsnicmp(argv[i], L"-volume", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/volume", wcslen(argv[i])) == 0)
 		{
-			m_volumeFile = i + 1 < argc ? argv[++i] : m_volumeFile;
+			m_volumeFiles[0] = i + 1 < argc ? argv[++i] : m_volumeFiles[0];
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.x);
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.y);
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.z);
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.w);
+		}
+		else if (_wcsnicmp(argv[i], L"-lightMapScale", wcslen(argv[i])) == 0 ||
+			_wcsnicmp(argv[i], L"/lightMapScale", wcslen(argv[i])) == 0)
+		{
+			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_lightMapScale);
 		}
 		else if (_wcsnicmp(argv[i], L"-maxRaySamples", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/maxRaySamples", wcslen(argv[i])) == 0)

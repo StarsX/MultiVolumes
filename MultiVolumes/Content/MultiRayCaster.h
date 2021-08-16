@@ -31,7 +31,7 @@ public:
 	void SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos);
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
-	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, DirectX::CXMMATRIX shadowVP, const DirectX::XMFLOAT3& eyePt);
+	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
 	void Render(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool updateLight);
 	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
@@ -152,7 +152,7 @@ protected:
 	XUSG::DescriptorTable	m_srvTables[NUM_SRV_TABLE];
 	XUSG::DescriptorTable	m_samplerTable;
 
-	XUSG::ShaderResource::sptr	m_fileSrc;
+	std::vector<XUSG::ShaderResource::sptr>	m_fileSrcs;
 	std::vector<XUSG::Texture3D::uptr>	m_volumes;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeMaps;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeDepths;
