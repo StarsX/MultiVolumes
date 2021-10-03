@@ -40,7 +40,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_numVolumes(2),
 	m_radianceFile(L""),
 	m_irradianceFile(L""),
-	m_meshFileName("Media/bunny.obj"),
+	m_meshFileName("Assets/bunny.obj"),
 	m_volPosScale(0.0f, 0.0f, 0.0f, 10.0f),
 	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f),
 	m_lightMapScale(40.0f)
@@ -54,16 +54,16 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	freopen_s(&stream, "CONOUT$", "w+t", stderr);
 #endif
 
-	m_volumeFiles[0] = L"Media/bunny.dds";
-	m_volumeFiles[1] = L"Media/buddha.dds";
-	m_volumeFiles[2] = L"Media/dragon.dds";
-	m_volumeFiles[3] = L"Media/Eagle.dds";
-	m_volumeFiles[4] = L"Media/Jacquemart.dds";
-	m_volumeFiles[5] = L"Media/lucy.dds";
-	m_volumeFiles[6] = L"Media/penelope.dds";
-	m_volumeFiles[7] = L"Media/Cloud1.dds";
-	m_volumeFiles[8] = L"Media/Cloud2.dds";
-	m_volumeFiles[9] = L"Media/Devil.dds";
+	m_volumeFiles[0] = L"Assets/bunny.dds";
+	m_volumeFiles[1] = L"Assets/buddha.dds";
+	m_volumeFiles[2] = L"Assets/dragon.dds";
+	m_volumeFiles[3] = L"Assets/Eagle.dds";
+	m_volumeFiles[4] = L"Assets/Jacquemart.dds";
+	m_volumeFiles[5] = L"Assets/lucy.dds";
+	m_volumeFiles[6] = L"Assets/penelope.dds";
+	m_volumeFiles[7] = L"Assets/Cloud1.dds";
+	m_volumeFiles[8] = L"Assets/Cloud2.dds";
+	m_volumeFiles[9] = L"Assets/Devil.dds";
 }
 
 MultiVolumes::~MultiVolumes()
@@ -247,7 +247,7 @@ void MultiVolumes::CreateSwapchain()
 {
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
-	N_RETURN(m_swapChain->Create(m_factory.Get(), Win32Application::GetHwnd(), m_commandQueue.get(),
+	N_RETURN(m_swapChain->Create(m_factory.get(), Win32Application::GetHwnd(), m_commandQueue.get(),
 		FrameCount, m_width, m_height, g_backFormat), ThrowIfFailed(E_FAIL));
 
 	// This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut.
