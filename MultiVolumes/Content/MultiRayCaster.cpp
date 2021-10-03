@@ -100,7 +100,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 		m_volumes[i] = Texture3D::MakeUnique();
 		N_RETURN(m_volumes[i]->Create(m_device.get(), gridSize, gridSize, gridSize, Format::R16G16B16A16_FLOAT,
 			ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::ALLOW_SIMULTANEOUS_ACCESS, 1,
-			MemoryType::DEFAULT, (L"Volume" + to_wstring(i)).c_str()), false);
+			MemoryFlag::NONE, (L"Volume" + to_wstring(i)).c_str()), false);
 	}
 
 	m_cubeMaps.resize(numVolumes);
@@ -109,23 +109,23 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	{
 		m_cubeMaps[i] = Texture2D::MakeUnique();
 		N_RETURN(m_cubeMaps[i]->Create(m_device.get(), gridSize, gridSize, Format::R16G16B16A16_FLOAT, 6,
-			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, MemoryType::DEFAULT, true,
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, true, MemoryFlag::NONE,
 			(L"CubeMap" + to_wstring(i)).c_str()), false);
 
 		m_cubeDepths[i] = Texture2D::MakeUnique();
 		N_RETURN(m_cubeDepths[i]->Create(m_device.get(), gridSize, gridSize, Format::R32_FLOAT, 6,
-			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, MemoryType::DEFAULT, true,
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, true, MemoryFlag::NONE,
 			(L"CubeDepth" + to_wstring(i)).c_str()), false);
 	}
 
 	m_lightMap = Texture3D::MakeUnique();
 	N_RETURN(m_lightMap->Create(m_device.get(), m_lightGridSize, m_lightGridSize, m_lightGridSize,
 		Format::R11G11B10_FLOAT,ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::ALLOW_SIMULTANEOUS_ACCESS,
-		1, MemoryType::DEFAULT, L"LightMap"), false);
+		1, MemoryFlag::NONE, L"LightMap"), false);
 
 	m_cbPerFrame = ConstantBuffer::MakeUnique();
 	N_RETURN(m_cbPerFrame->Create(m_device.get(), sizeof(CBPerFrame[FrameCount]), FrameCount,
-		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerFrame"), false);
+		nullptr, MemoryType::UPLOAD, MemoryFlag::NONE, L"RayCaster.CBPerFrame"), false);
 
 	/*m_cbPerObject = ConstantBuffer::MakeUnique();
 	N_RETURN(m_cbPerObject->Create(m_device.get(), sizeof(CBPerObject[FrameCount]), FrameCount,
@@ -141,7 +141,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	const float aabb[] = { -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 	m_vertexBuffer = VertexBuffer::MakeUnique();
 	N_RETURN(m_vertexBuffer->Create(m_device.get(), 1, sizeof(float[6]), ResourceFlag::NONE,
-		MemoryType::DEFAULT, 1, nullptr, 0, nullptr, 0, nullptr, L"AABB"), false);
+		MemoryType::DEFAULT, 1, nullptr, 0, nullptr, 0, nullptr, MemoryFlag::NONE, L"AABB"), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 	N_RETURN(m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), aabb, sizeof(float[6])), false);
 
@@ -211,11 +211,11 @@ bool MultiRayCaster::SetViewport(uint32_t width, uint32_t height)
 {
 	m_kDepths = Texture2D::MakeUnique();
 	N_RETURN(m_kDepths->Create(m_device.get(), width, height, Format::R32_UINT, NUM_OIT_LAYERS,
-		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, MemoryType::DEFAULT, false, L"ColorKBuffer"), false);
+		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, false, MemoryFlag::NONE, L"ColorKBuffer"), false);
 
 	m_kColors = Texture2D::MakeUnique();
 	N_RETURN(m_kColors->Create(m_device.get(), width, height, Format::R16G16B16A16_FLOAT, NUM_OIT_LAYERS,
-		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, MemoryType::DEFAULT, false, L"ColorKBuffer"), false);
+		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, false, MemoryFlag::NONE, L"ColorKBuffer"), false);
 
 	return createDescriptorTables();
 }
@@ -397,7 +397,7 @@ bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resour
 
 	m_indexBuffer = IndexBuffer::MakeUnique();
 	N_RETURN(m_indexBuffer->Create(m_device.get(), sizeof(indices), Format::R16_UINT, ResourceFlag::NONE,
-		MemoryType::DEFAULT, 1, nullptr, 1, nullptr, 1, nullptr, L"CubeIB"), false);
+		MemoryType::DEFAULT, 1, nullptr, 1, nullptr, 1, nullptr, MemoryFlag::NONE, L"CubeIB"), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 
 	return m_indexBuffer->Upload(pCommandList, uploaders.back().get(), indices, sizeof(indices));
@@ -413,7 +413,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		m_perObject = StructuredBuffer::MakeUnique();
 		N_RETURN(m_perObject->Create(m_device.get(), numVolumes * FrameCount,
 			sizeof(PerObject), ResourceFlag::NONE, MemoryType::UPLOAD, FrameCount,
-			firstSRVElements, 0, nullptr, L"RayCaster.Matrices"), false);
+			firstSRVElements, 0, nullptr, MemoryFlag::NONE, L"RayCaster.Matrices"), false);
 	}
 
 	{
@@ -430,7 +430,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		m_volumeDescs = StructuredBuffer::MakeUnique();
 		N_RETURN(m_volumeDescs->Create(m_device.get(), numVolumes,
 			sizeof(VolumeDesc), ResourceFlag::NONE, MemoryType::DEFAULT, 1,
-			nullptr, 1, nullptr, L"RayCaster.VolumeDescs"), false);
+			nullptr, 1, nullptr, MemoryFlag::NONE, L"RayCaster.VolumeDescs"), false);
 
 		uploaders.emplace_back(Resource::MakeUnique());
 		m_volumeDescs->Upload(pCommandList, uploaders.back().get(),
@@ -442,23 +442,24 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		m_visibleVolumeCounter = RawBuffer::MakeShared();
 		N_RETURN(m_visibleVolumeCounter->Create(m_device.get(), sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::DENY_SHADER_RESOURCE,
-			MemoryType::DEFAULT, 0, nullptr, 0, nullptr, L"RayCaster.VisibleVolumeCounter"), false);
+			MemoryType::DEFAULT, 0, nullptr, 0, nullptr, MemoryFlag::NONE,
+			L"RayCaster.VisibleVolumeCounter"), false);
 
 		m_visibleVolumes = StructuredBuffer::MakeUnique();
 		m_visibleVolumes->SetCounter(m_visibleVolumeCounter);
 		N_RETURN(m_visibleVolumes->Create(m_device.get(), numVolumes, sizeof(VolumeDesc),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
-			1, nullptr, L"RayCaster.VisibleVolumes"), false);
+			1, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumes"), false);
 
 		m_counterReset = StructuredBuffer::MakeUnique();
 		N_RETURN(m_counterReset->Create(m_device.get(), 1, sizeof(uint32_t),
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
-			0, nullptr, L"RayCaster.CounterReset"), false);
+			0, nullptr, MemoryFlag::NONE, L"RayCaster.CounterReset"), false);
 
 		m_volumeDispatchArg = RawBuffer::MakeUnique();
 		N_RETURN(m_volumeDispatchArg->Create(m_device.get(), sizeof(uint32_t[3]),
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
-			0, nullptr, L"RayCaster.VisibleVolumeDispatchArg"), false);
+			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDispatchArg"), false);
 
 		const uint32_t pDispatchReset[] = { DIV_UP(m_gridSize, 8), DIV_UP(m_gridSize, 4), 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -467,7 +468,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		m_volumeDrawArg = RawBuffer::MakeUnique();
 		N_RETURN(m_volumeDrawArg->Create(m_device.get(), sizeof(uint32_t[5]),
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
-			0, nullptr, L"RayCaster.VisibleVolumeDrawArg"), false);
+			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDrawArg"), false);
 
 		const uint32_t pDrawReset[] = { 36, 0, 0, 0, 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -482,7 +483,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		m_volumeVis = TypedBuffer::MakeUnique();
 		N_RETURN(m_volumeVis->Create(m_device.get(), numVolumes, sizeof(uint8_t),
 			Format::R8_UINT, ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT,
-			1, nullptr, 1, nullptr, L"RayCaster.VolumeVisibility"), false);
+			1, nullptr, 1, nullptr, MemoryFlag::NONE, L"RayCaster.VolumeVisibility"), false);
 	}
 
 	return true;
