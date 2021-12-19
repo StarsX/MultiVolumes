@@ -107,15 +107,15 @@ protected:
 	bool createPipelines(XUSG::Format rtFormat);
 	bool createCommandLayouts();
 	bool createDescriptorTables();
-	bool buildAccelerationStructures(const XUSG::RayTracing::CommandList* pCommandList,
+	bool buildAccelerationStructures(XUSG::RayTracing::CommandList* pCommandList,
 		XUSG::RayTracing::GeometryBuffer* pGeometries);
 	bool buildShaderTables();
 
-	void cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void resolveOIT(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	XUSG::RayTracing::Device::sptr m_device;
 
@@ -152,22 +152,22 @@ protected:
 	XUSG::DescriptorTable	m_srvTables[NUM_SRV_TABLE];
 	XUSG::DescriptorTable	m_samplerTable;
 
-	std::vector<XUSG::ShaderResource::sptr>	m_fileSrcs;
+	std::vector<XUSG::Texture::sptr>	m_fileSrcs;
 	std::vector<XUSG::Texture3D::uptr>	m_volumes;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeMaps;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeDepths;
-	XUSG::Texture3D::uptr		m_lightMap;
-	XUSG::Texture2D::uptr		m_kDepths;
-	XUSG::Texture2D::uptr		m_kColors;
-	XUSG::ConstantBuffer::uptr	m_cbPerFrame;
+	XUSG::Texture3D::uptr	m_lightMap;
+	XUSG::Texture::uptr		m_kDepths;
+	XUSG::Texture::uptr		m_kColors;
+	XUSG::ConstantBuffer::uptr m_cbPerFrame;
 	XUSG::StructuredBuffer::uptr m_perObject;
 	XUSG::StructuredBuffer::uptr m_volumeDescs;
 	XUSG::StructuredBuffer::uptr m_visibleVolumes;
 	XUSG::StructuredBuffer::uptr m_counterReset;
-	XUSG::RawBuffer::uptr		m_volumeDispatchArg;
-	XUSG::RawBuffer::uptr		m_volumeDrawArg;
-	XUSG::RawBuffer::sptr		m_visibleVolumeCounter;
-	XUSG::TypedBuffer::uptr		m_volumeVis;
+	XUSG::RawBuffer::uptr	m_volumeDispatchArg;
+	XUSG::RawBuffer::uptr	m_volumeDrawArg;
+	XUSG::RawBuffer::sptr	m_visibleVolumeCounter;
+	XUSG::TypedBuffer::uptr	m_volumeVis;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	const XUSG::ShaderResource* m_pIrradiance;

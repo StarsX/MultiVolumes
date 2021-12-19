@@ -211,7 +211,7 @@ void ObjectRenderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 	}
 }
 
-void ObjectRenderer::RenderShadow(const CommandList* pCommandList, uint8_t frameIndex, bool drawScene)
+void ObjectRenderer::RenderShadow(CommandList* pCommandList, uint8_t frameIndex, bool drawScene)
 {
 	// Set barrier
 	ResourceBarrier barrier;

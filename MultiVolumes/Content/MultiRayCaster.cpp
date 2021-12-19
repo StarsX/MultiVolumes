@@ -904,7 +904,7 @@ bool MultiRayCaster::createDescriptorTables()
 	return true;
 }
 
-bool MultiRayCaster::buildAccelerationStructures(const RayTracing::CommandList* pCommandList, GeometryBuffer* pGeometry)
+bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pCommandList, GeometryBuffer* pGeometry)
 {
 	AccelerationStructure::SetFrameCount(FrameCount);
 
@@ -969,7 +969,7 @@ bool MultiRayCaster::buildShaderTables()
 	return true;
 }
 
-void MultiRayCaster::cullVolumes(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
 	ResourceBarrier barriers[1];
@@ -1107,7 +1107,7 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
-void MultiRayCaster::resolveOIT(const XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
 	ResourceBarrier barrier;

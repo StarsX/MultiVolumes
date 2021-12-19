@@ -34,7 +34,7 @@ public:
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
-	void RenderShadow(const XUSG::CommandList* pCommandList, uint8_t frameIndex, bool drawScene = true);
+	void RenderShadow(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool drawScene = true);
 	void Render(const XUSG::CommandList* pCommandList, uint8_t frameIndex, bool drawScene = true);
 	void ToneMap(const XUSG::CommandList* pCommandList);
 
@@ -120,7 +120,7 @@ protected:
 	XUSG::ConstantBuffer::uptr	m_cbPerObject;
 	XUSG::ConstantBuffer::uptr	m_cbPerFrame;
 	XUSG::ConstantBuffer::uptr	m_cbPerFrameEnv;
-	XUSG::ShaderResource::sptr	m_lightProbes[NUM_LIGHT_PROBE];
+	XUSG::Texture::sptr			m_lightProbes[NUM_LIGHT_PROBE];
 
 	uint32_t				m_numIndices;
 	uint32_t				m_shadowMapSize;
