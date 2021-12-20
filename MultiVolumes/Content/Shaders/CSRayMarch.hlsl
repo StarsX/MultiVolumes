@@ -145,8 +145,8 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 			if (transm < ZERO_THRESHOLD) break;
 		}
 
-		step = min16float(max((1.0 - transm) * 2.0, 0.8)) * stepScale;
-		step *= clamp(1.0 - color.w * 4.0, 0.5, 2.0);
+		// Update position along ray
+		step = GetStep(transm, color.w, stepScale);
 		t += step;
 #ifdef _HAS_DEPTH_MAP_
 		if (t > tMax) break;
