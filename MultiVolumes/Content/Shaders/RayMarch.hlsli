@@ -3,6 +3,10 @@
 //--------------------------------------------------------------------------------------
 
 #include "Common.hlsli"
+#ifdef _HAS_LIGHT_PROBE_
+#define SH_ORDER 3
+#include "SHIrradiance.hlsli"
+#endif
 
 #define ABSORPTION			1.0
 #define ZERO_THRESHOLD		0.01
@@ -25,7 +29,7 @@ Texture2D<float> g_txDepth		: register (t0, space2);
 #endif
 
 #if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
-TextureCube<float3> g_txIrradiance : register (t1, space2);
+StructuredBuffer<float3> g_roSHCoeffs : register (t1, space2);
 #endif
 
 //--------------------------------------------------------------------------------------
@@ -120,9 +124,9 @@ min16float ShadowTest(float3 pos, Texture2D<float> txDepth)
 // Get irradiance
 //--------------------------------------------------------------------------------------
 #if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
-float3 GetIrradiance(float3 dir)
+float3 GetIrradiance(float3 shCoeffs[SH_NUM_COEFF], float3 dir)
 {
-	return g_txIrradiance.SampleLevel(g_smpLinear, dir, 0.0);
+	return EvaluateSHIrradiance(shCoeffs, normalize(dir));
 }
 #endif
 

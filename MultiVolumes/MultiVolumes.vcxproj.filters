@@ -46,6 +46,9 @@
     <Filter Include="Shaders\VolumeData">
       <UniqueIdentifier>{0bbf5cde-5c5e-440d-b63c-8a2aa010497d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders\SHMath">
+      <UniqueIdentifier>{00a4318e-992f-4387-8f21-5cf53799c760}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common\d3dx12.h">
@@ -102,6 +105,12 @@
     <ClInclude Include="Common\D3D12RaytracingHelpers.hpp">
       <Filter>Common\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Content\LightProbe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Content\SHSharedConsts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common\DXFramework.cpp">
@@ -128,6 +137,9 @@
     <ClCompile Include="XUSG\Optional\XUSGObjLoader.cpp">
       <Filter>XUSG\Optional</Filter>
     </ClCompile>
+    <ClCompile Include="Content\LightProbe.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Content\Shaders\Common.hlsli">
@@ -144,6 +156,15 @@
     </None>
     <None Include="Content\Shaders\CSRayMarch.hlsl">
       <Filter>Shaders\RayCaster</Filter>
+    </None>
+    <None Include="Content\Shaders\SHIrradiance.hlsli">
+      <Filter>Shaders\SHMath</Filter>
+    </None>
+    <None Include="Content\Shaders\SHMath.hlsli">
+      <Filter>Shaders\SHMath</Filter>
+    </None>
+    <None Include="Content\Shaders\CubeMap.hlsli">
+      <Filter>Shaders\SHMath</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -193,6 +214,18 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Content\Shaders\PSToneMap.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\CSSHCubeMap.hlsl">
+      <Filter>Shaders\SHMath</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\CSSHNormalize.hlsl">
+      <Filter>Shaders\SHMath</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\CSSHSum.hlsl">
+      <Filter>Shaders\SHMath</Filter>
+    </FxCompile>
+    <FxCompile Include="Content\Shaders\CSTemporalAA.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

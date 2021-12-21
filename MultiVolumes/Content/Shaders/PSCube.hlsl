@@ -43,7 +43,10 @@ void main(PSIn input)// : SV_TARGET
 		const uint3 uvw = { uv, i };
 
 		if (g_txKDepths[uvw] == depth)
-			g_rwKColors[uvw] = CubeCast(input.Pos.xy, input.UVW.xyz, input.LPt.xyz, rayDir, uavIdx);
+		{
+			const min16float4 color = CubeCast(input.Pos.xy, input.UVW.xyz, input.LPt.xyz, rayDir, uavIdx);
+			if (color.w > 0.0 && color.w <= 1.0) g_rwKColors[uvw] = color;
+		}
 	}
 #endif
 }

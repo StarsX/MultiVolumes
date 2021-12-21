@@ -59,7 +59,7 @@ const uint8_t g_numCubeMips = NUM_CUBE_MIP;
 MultiRayCaster::MultiRayCaster(const RayTracing::Device::sptr& device) :
 	m_device(device),
 	m_pDepths(nullptr),
-	m_pIrradiance(nullptr),
+	m_coeffSH(nullptr),
 	m_instances(),
 	m_maxRaySamples(256),
 	m_maxLightSamples(128),
@@ -240,9 +240,9 @@ void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint3
 	pCommandList->Dispatch(DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4), DIV_UP(m_gridSize, 4));
 }
 
-void MultiRayCaster::SetIrradiance(const ShaderResource* pIrradiance)
+void MultiRayCaster::SetSH(const StructuredBuffer::sptr& coeffSH)
 {
-	m_pIrradiance = pIrradiance;
+	m_coeffSH = coeffSH;
 }
 
 void MultiRayCaster::SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples)
@@ -367,7 +367,8 @@ void MultiRayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_SHADOW]);
 	pCommandList->SetComputeDescriptorTable(5, m_samplerTable);
 	pCommandList->SetCompute32BitConstant(6, m_maxLightSamples);
-	pCommandList->SetCompute32BitConstant(6, m_pIrradiance ? 1 : 0, 1);
+	pCommandList->SetCompute32BitConstant(6, m_coeffSH ? 1 : 0, 1);
+	if (m_coeffSH) pCommandList->SetComputeRootShaderResourceView(7, m_coeffSH.get());
 
 	// Dispatch grid
 	pCommandList->Dispatch(DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4), DIV_UP(m_lightGridSize, 4));
@@ -532,9 +533,10 @@ bool MultiRayCaster::createPipelineLayouts()
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 1, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::SRV, numVolumeSrcs, 0, 1);
-		pipelineLayout->SetRange(4, DescriptorType::SRV, 2, 0, 2);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, 1, 0, 2);
 		pipelineLayout->SetRange(5, DescriptorType::SAMPLER, 1, 0);
 		pipelineLayout->SetConstants(6, 2, 1);
+		pipelineLayout->SetRootSRV(7, 1, 2);
 		X_RETURN(m_pipelineLayouts[RAY_MARCH_L], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"LightSpaceRayMarchingLayout"), false);
 	}
@@ -845,13 +847,6 @@ bool MultiRayCaster::createDescriptorTables()
 			descriptorTable->SetDescriptors(0, 1, &m_pDepths[SHADOW_MAP]->GetSRV());
 			X_RETURN(m_srvTables[SRV_TABLE_SHADOW], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 		}
-	}
-
-	if (m_pIrradiance)
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_pIrradiance->GetSRV());
-		X_RETURN(m_srvTables[SRV_TABLE_IRRADIANCE], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
 	{

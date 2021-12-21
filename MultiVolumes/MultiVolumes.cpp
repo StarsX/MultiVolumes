@@ -20,7 +20,7 @@ using namespace XUSG::RayTracing;
 const float g_FOVAngleY = XM_PIDIV4;
 
 const auto g_backFormat = Format::B8G8R8A8_UNORM;
-const auto g_rtFormat = Format::R11G11B10_FLOAT;
+const auto g_rtFormat = Format::R16G16B16A16_FLOAT;
 const auto g_dsFormat = Format::D32_FLOAT;
 
 static auto g_updateLight = true;
@@ -166,12 +166,18 @@ void MultiVolumes::LoadAssets()
 
 	vector<Resource::uptr> uploaders(0);
 	m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);
-	m_objectRenderer = make_unique<ObjectRenderer>(m_device);
-	if (!m_objectRenderer) ThrowIfFailed(E_FAIL);
-	if (!m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
-		uploaders, m_meshFileName.c_str(), m_irradianceFile.c_str(), m_radianceFile.c_str(),
-		g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale))
-		ThrowIfFailed(E_FAIL);
+
+	if (!m_radianceFile.empty())
+	{
+		X_RETURN(m_lightProbe, make_unique<LightProbe>(m_device), ThrowIfFailed(E_FAIL));
+		N_RETURN(m_lightProbe->Init(pCommandList, m_descriptorTableCache, uploaders,
+			m_radianceFile.c_str(), g_rtFormat, g_dsFormat), ThrowIfFailed(E_FAIL));
+	}
+
+	X_RETURN(m_objectRenderer, make_unique<ObjectRenderer>(m_device), ThrowIfFailed(E_FAIL));
+	N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
+		uploaders, m_meshFileName.c_str(), g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale),
+		ThrowIfFailed(E_FAIL));
 
 	const auto numVolumeSrcs = static_cast<uint32_t>(size(m_volumeFiles));
 
@@ -186,7 +192,6 @@ void MultiVolumes::LoadAssets()
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
 	m_rayCaster->SetLightMapWorld(m_lightMapScale * 2.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 	m_rayCaster->SetMaxSamples(m_maxRaySamples, m_maxLightSamples);
-	m_rayCaster->SetIrradiance(m_objectRenderer->GetIrradiance());
 
 	if (m_volumeFiles->empty())
 	{
@@ -264,6 +269,11 @@ void MultiVolumes::CreateResources()
 		N_RETURN(m_renderTargets[n]->CreateFromSwapChain(m_device.get(), m_swapChain.get(), n), ThrowIfFailed(E_FAIL));
 	}
 
+	if (m_lightProbe)
+	{
+		N_RETURN(m_lightProbe->CreateDescriptorTables(), ThrowIfFailed(E_FAIL));
+		N_RETURN(m_objectRenderer->SetRadiance(m_lightProbe->GetRadiance()->GetSRV()), ThrowIfFailed(E_FAIL));
+	}
 	N_RETURN(m_objectRenderer->SetViewport(m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
 	N_RETURN(m_rayCaster->SetDepthMaps(m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
 
@@ -312,6 +322,7 @@ void MultiVolumes::OnUpdate()
 	const auto proj = XMLoadFloat4x4(&m_proj);
 	const auto viewProj = view * proj;
 	m_objectRenderer->UpdateFrame(m_frameIndex, viewProj, m_eyePt);
+	if (m_lightProbe) m_lightProbe->UpdateFrame(m_frameIndex, viewProj, m_eyePt);
 	m_rayCaster->UpdateFrame(m_frameIndex, viewProj, m_objectRenderer->GetShadowVP(), m_eyePt);
 }
 
@@ -545,11 +556,6 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 		{
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%u", &m_numVolumes);
 		}
-		else if (_wcsnicmp(argv[i], L"-irradiance", wcslen(argv[i])) == 0 ||
-			_wcsnicmp(argv[i], L"/irradiance", wcslen(argv[i])) == 0)
-		{
-			m_irradianceFile = i + 1 < argc ? argv[++i] : m_irradianceFile;
-		}
 		else if (_wcsnicmp(argv[i], L"-radiance", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/radiance", wcslen(argv[i])) == 0)
 		{
@@ -580,10 +586,23 @@ void MultiVolumes::PopulateCommandList()
 	};
 	pCommandList->SetDescriptorPools(static_cast<uint32_t>(size(descriptorPools)), descriptorPools);
 
+	if (m_lightProbe)
+	{
+		static auto isFirstFrame = true;
+		if (isFirstFrame)
+		{
+			m_lightProbe->Process(pCommandList, m_frameIndex);
+			m_objectRenderer->SetSH(m_lightProbe->GetSH());
+			m_rayCaster->SetSH(m_lightProbe->GetSH());
+			isFirstFrame = false;
+		}
+	}
+
 	if (g_updateLight) m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
 
-	ResourceBarrier barriers[3];
-	const auto pColor = m_objectRenderer->GetRenderTarget();
+	ResourceBarrier barriers[4];
+	const auto pColor = m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_COLOR);
+	const auto pVelocity = m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_VELOCITY);
 	const auto pDepth = m_objectRenderer->GetDepthMap(ObjectRenderer::DEPTH_MAP);
 	const auto pShadow = m_objectRenderer->GetDepthMap(ObjectRenderer::SHADOW_MAP);
 	auto numBarriers = pColor->SetBarrier(barriers, ResourceState::RENDER_TARGET);
@@ -603,6 +622,7 @@ void MultiVolumes::PopulateCommandList()
 	pCommandList->RSSetScissorRects(1, &scissorRect);
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
+	if (m_lightProbe) m_lightProbe->RenderEnvironment(pCommandList, m_frameIndex);
 	m_rayCaster->Render(pCommandList, m_frameIndex, g_updateLight);
 	g_updateLight = false;
 
@@ -611,7 +631,7 @@ void MultiVolumes::PopulateCommandList()
 	pCommandList->Barrier(numBarriers, barriers);
 	pCommandList->OMSetRenderTargets(1, &m_renderTargets[m_frameIndex]->GetRTV());
 
-	m_objectRenderer->ToneMap(pCommandList);
+	m_objectRenderer->Postprocess(pCommandList);
 	
 	// Indicate that the back buffer will now be used to present.
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::PRESENT);

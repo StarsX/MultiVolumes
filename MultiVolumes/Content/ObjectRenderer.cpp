@@ -4,9 +4,6 @@
 
 #include "Optional/XUSGObjLoader.h"
 #include "ObjectRenderer.h"
-#define _INDEPENDENT_DDS_LOADER_
-#include "Advanced/XUSGDDSLoader.h"
-#undef _INDEPENDENT_DDS_LOADER_
 
 using namespace std;
 using namespace DirectX;
@@ -21,8 +18,10 @@ enum LightProbeBit : uint8_t
 struct CBPerObject
 {
 	XMFLOAT4X4 WorldViewProj;
+	XMFLOAT4X4 WorldViewProjPrev;
 	XMFLOAT3X4 World;
 	XMFLOAT4X4 ShadowWVP;
+	XMFLOAT2 ProjBias;
 };
 
 struct CBPerFrame
@@ -33,15 +32,11 @@ struct CBPerFrame
 	XMFLOAT4 Ambient;
 };
 
-struct CBPerFrameEnv
-{
-	DirectX::XMFLOAT4	EyePos;
-	DirectX::XMFLOAT4X4	ScreenToWorld;
-};
-
 ObjectRenderer::ObjectRenderer(const Device::sptr& device) :
 	m_device(device),
-	m_lightProbes(),
+	m_srvTables(),
+	m_coeffSH(nullptr),
+	m_frameParity(0),
 	m_shadowMapSize(1024),
 	m_lightPt(75.0f, 75.0f, -75.0f),
 	m_lightColor(1.0f, 0.7f, 0.3f, 1.0f),
@@ -59,8 +54,7 @@ ObjectRenderer::~ObjectRenderer()
 
 bool ObjectRenderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height,
 	const DescriptorTableCache::sptr& descriptorTableCache, vector<Resource::uptr>& uploaders,
-	const char* fileName, const wchar_t* irradianceMapFileName, const wchar_t* radianceMapFileName,
-	Format backFormat, Format rtFormat, Format dsFormat, const XMFLOAT4& posScale)
+	const char* fileName, Format backFormat, Format rtFormat, Format dsFormat, const XMFLOAT4& posScale)
 {
 	m_descriptorTableCache = descriptorTableCache;
 	SetWorld(posScale.w, XMFLOAT3(posScale.x, posScale.y, posScale.z));
@@ -71,27 +65,6 @@ bool ObjectRenderer::Init(CommandList* pCommandList, uint32_t width, uint32_t he
 	N_RETURN(createVB(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(), uploaders), false);
 	N_RETURN(createIB(pCommandList, objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
 	m_sceneSize = objLoader.GetRadius() * posScale.w * 2.0f;
-
-	// Load input images
-	if (irradianceMapFileName && *irradianceMapFileName)
-	{
-		DDS::Loader textureLoader;
-		DDS::AlphaMode alphaMode;
-
-		uploaders.emplace_back(Resource::MakeUnique());
-		N_RETURN(textureLoader.CreateTextureFromFile(m_device.get(), pCommandList, irradianceMapFileName,
-			8192, false, m_lightProbes[IRRADIANCE_MAP], uploaders.back().get(), &alphaMode), false);
-	}
-
-	if (radianceMapFileName && *radianceMapFileName)
-	{
-		DDS::Loader textureLoader;
-		DDS::AlphaMode alphaMode;
-
-		uploaders.emplace_back(Resource::MakeUnique());
-		N_RETURN(textureLoader.CreateTextureFromFile(m_device.get(), pCommandList, radianceMapFileName,
-			8192, false, m_lightProbes[RADIANCE_MAP], uploaders.back().get(), &alphaMode), false);
-	}
 
 	// Create resources
 	const auto smFormat = Format::D16_UNORM;
@@ -111,13 +84,6 @@ bool ObjectRenderer::Init(CommandList* pCommandList, uint32_t width, uint32_t he
 	N_RETURN(m_cbPerFrame->Create(m_device.get(), sizeof(CBPerFrame[FrameCount]), FrameCount,
 		nullptr, MemoryType::UPLOAD, MemoryFlag::NONE, L"ObjectRenderer.CBPerFrame"), false);
 
-	if (m_lightProbes[RADIANCE_MAP])
-	{
-		m_cbPerFrameEnv = ConstantBuffer::MakeUnique();
-		N_RETURN(m_cbPerFrameEnv->Create(m_device.get(), sizeof(CBPerFrameEnv[FrameCount]), FrameCount,
-			nullptr, MemoryType::UPLOAD, MemoryFlag::NONE, L"ObjectRenderer.CBPerFrameEnv"), false);
-	}
-
 	// Create window size-dependent resource
 	//N_RETURN(SetViewport(width, height, dsFormat), false);
 
@@ -135,16 +101,37 @@ bool ObjectRenderer::SetViewport(uint32_t width, uint32_t height, Format rtForma
 	m_viewport = XMUINT2(width, height);
 
 	// Recreate window size-dependent resource
-	m_color = RenderTarget::MakeUnique();
-	N_RETURN(m_color->Create(m_device.get(), width, height, rtFormat, 1,
+	for (auto& renderTarget : m_renderTargets) renderTarget = RenderTarget::MakeUnique();
+	N_RETURN(m_renderTargets[RT_COLOR]->Create(m_device.get(), width, height, rtFormat, 1,
 		ResourceFlag::NONE, 1, 1, clearColor, false, MemoryFlag::NONE,
 		L"RenderTarget"), false);
+	m_renderTargets[RT_VELOCITY]->Create(m_device.get(), width, height, Format::R16G16_FLOAT,
+		1, ResourceFlag::NONE, 1, 1, nullptr, false, MemoryFlag::NONE, L"Velocity");
+
+	// Temporal AA
+	for (uint8_t i = 0; i < 2; ++i)
+	{
+		auto& temporalView = m_temporalViews[i];
+		temporalView = Texture2D::MakeUnique();
+		N_RETURN(temporalView->Create(m_device.get(), width, height, Format::R16G16B16A16_FLOAT, 1,
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, false, MemoryFlag::NONE,
+			(L"TemporalView" + to_wstring(i)).c_str()), false);
+	}
 
 	m_depths[DEPTH_MAP] = DepthStencil::MakeUnique();
 	N_RETURN(m_depths[DEPTH_MAP]->Create(m_device.get(), width, height, dsFormat,
 		ResourceFlag::NONE, 1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"Depth"), false);
 
 	return createDescriptorTables();
+}
+
+bool ObjectRenderer::SetRadiance(const Descriptor& radiance)
+{
+	const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+	descriptorTable->SetDescriptors(0, 1, &radiance);
+	X_RETURN(m_srvTables[SRV_TABLE_RADIANCE], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+
+	return true;
 }
 
 void ObjectRenderer::SetWorld(float scale, const XMFLOAT3& pos, const XMFLOAT3* pPitchYawRoll)
@@ -164,6 +151,68 @@ void ObjectRenderer::SetLight(const XMFLOAT3& pos, const XMFLOAT3& color, float 
 void ObjectRenderer::SetAmbient(const XMFLOAT3& color, float intensity)
 {
 	m_ambient = XMFLOAT4(color.x, color.y, color.z, intensity);
+}
+
+void ObjectRenderer::SetSH(const StructuredBuffer::sptr& coeffSH)
+{
+	m_coeffSH = coeffSH;
+}
+
+static const XMFLOAT2& IncrementalHalton()
+{
+	static auto haltonBase = XMUINT2(0, 0);
+	static auto halton = XMFLOAT2(0.0f, 0.0f);
+
+	// Base 2
+	{
+		// Bottom bit always changes, higher bits
+		// Change less frequently.
+		auto change = 0.5f;
+		auto oldBase = haltonBase.x++;
+		auto diff = haltonBase.x ^ oldBase;
+
+		// Diff will be of the form 0*1+, i.e. one bits up until the last carry.
+		// Expected iterations = 1 + 0.5 + 0.25 + ... = 2
+		do
+		{
+			halton.x += (oldBase & 1) ? -change : change;
+			change *= 0.5f;
+
+			diff = diff >> 1;
+			oldBase = oldBase >> 1;
+		} while (diff);
+	}
+
+	// Base 3
+	{
+		const auto oneThird = 1.0f / 3.0f;
+		auto mask = 0x3u;	// Also the max base 3 digit
+		auto add = 0x1u;	// Amount to add to force carry once digit == 3
+		auto change = oneThird;
+		++haltonBase.y;
+
+		// Expected iterations: 1.5
+		while (true)
+		{
+			if ((haltonBase.y & mask) == mask)
+			{
+				haltonBase.y += add;	// Force carry into next 2-bit digit
+				halton.y -= 2 * change;
+
+				mask = mask << 2;
+				add = add << 2;
+
+				change *= oneThird;
+			}
+			else
+			{
+				halton.y += change;	// We know digit n has gone from a to a + 1
+				break;
+			}
+		};
+	}
+
+	return halton;
 }
 
 void ObjectRenderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT3& eyePt)
@@ -187,11 +236,21 @@ void ObjectRenderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 		*pCbData = shadowWVP;
 	}
 
+	const auto halton = IncrementalHalton();
+	XMFLOAT2 jitter =
+	{
+		(halton.x * 2.0f - 1.0f) / m_viewport.x,
+		(halton.y * 2.0f - 1.0f) / m_viewport.y
+	};
+
 	{
 		const auto pCbData = reinterpret_cast<CBPerObject*>(m_cbPerObject->Map(frameIndex));
 		XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(world * viewProj));
 		XMStoreFloat3x4(&pCbData->World, world);
 		pCbData->ShadowWVP = shadowWVP;
+		pCbData->ProjBias = jitter;
+		pCbData->WorldViewProjPrev = m_worldViewProj;
+		m_worldViewProj = pCbData->WorldViewProj;
 	}
 
 	{
@@ -202,13 +261,7 @@ void ObjectRenderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 		pCbData->Ambient = m_ambient;
 	}
 
-	if (m_lightProbes[RADIANCE_MAP])
-	{
-		const auto projToWorld = XMMatrixInverse(nullptr, viewProj);
-		const auto pCbData = reinterpret_cast<CBPerFrameEnv*>(m_cbPerFrameEnv->Map(frameIndex));
-		pCbData->EyePos = XMFLOAT4(eyePt.x, eyePt.y, eyePt.z, 1.0f);
-		XMStoreFloat4x4(&pCbData->ScreenToWorld, XMMatrixTranspose(projToWorld));
-	}
+	m_frameParity = !m_frameParity;
 }
 
 void ObjectRenderer::RenderShadow(CommandList* pCommandList, uint8_t frameIndex, bool drawScene)
@@ -239,11 +292,46 @@ void ObjectRenderer::RenderShadow(CommandList* pCommandList, uint8_t frameIndex,
 void ObjectRenderer::Render(const CommandList* pCommandList, uint8_t frameIndex, bool drawScene)
 {
 	if (drawScene) render(pCommandList, frameIndex);
-	if (m_lightProbes[RADIANCE_MAP]) environment(pCommandList, frameIndex);
 }
 
-void ObjectRenderer::ToneMap(const CommandList* pCommandList)
+void ObjectRenderer::Postprocess(CommandList* pCommandList)
 {
+	TemporalAA(pCommandList);
+	ToneMap(pCommandList);
+}
+
+void ObjectRenderer::TemporalAA(CommandList* pCommandList)
+{
+	ResourceBarrier barriers[4];
+	auto numBarriers = m_temporalViews[m_frameParity]->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
+	numBarriers = m_renderTargets[RT_COLOR]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_temporalViews[!m_frameParity]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE |
+		ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_renderTargets[RT_VELOCITY]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	//numBarriers = m_temporalViews[!m_frameParity]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE |
+		//ResourceState::PIXEL_SHADER_RESOURCE, numBarriers, BARRIER_ALL_SUBRESOURCES, BarrierFlag::END_ONLY);
+	//numBarriers = m_renderTargets[RT_VELOCITY]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE,
+		//numBarriers, BARRIER_ALL_SUBRESOURCES, BarrierFlag::END_ONLY);
+	pCommandList->Barrier(numBarriers, barriers);
+
+	// Set descriptor tables
+	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[TEMPORAL_AA]);
+	pCommandList->SetComputeDescriptorTable(0, m_uavTables[UAV_TABLE_TAA + m_frameParity]);
+	pCommandList->SetComputeDescriptorTable(1, m_srvTables[SRV_TABLE_TAA + m_frameParity]);
+
+	// Set pipeline state
+	pCommandList->SetPipelineState(m_pipelines[TEMPORAL_AA]);
+	pCommandList->Dispatch(DIV_UP(m_viewport.x, 8), DIV_UP(m_viewport.y, 8), 1);
+}
+
+void ObjectRenderer::ToneMap(CommandList* pCommandList)
+{
+	ResourceBarrier barrier;
+	const auto numBarriers = m_temporalViews[m_frameParity]->SetBarrier(
+		&barrier, ResourceState::NON_PIXEL_SHADER_RESOURCE |
+		ResourceState::PIXEL_SHADER_RESOURCE);
+	pCommandList->Barrier(numBarriers, &barrier);
+
 	// Set pipeline state
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[TONE_MAP]);
 	pCommandList->SetPipelineState(m_pipelines[TONE_MAP]);
@@ -251,24 +339,20 @@ void ObjectRenderer::ToneMap(const CommandList* pCommandList)
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 
 	// Set descriptor tables
-	pCommandList->SetGraphicsDescriptorTable(0, m_srvTables[SRV_TABLE_COLOR]);
+	pCommandList->SetGraphicsDescriptorTable(0, m_srvTables[SRV_TABLE_PP + m_frameParity]);
+	//pCommandList->SetGraphicsDescriptorTable(0, m_srvTables[SRV_TABLE_TAA]);
 
 	pCommandList->Draw(3, 1, 0, 0);
 }
 
-RenderTarget* ObjectRenderer::GetRenderTarget() const
+RenderTarget* ObjectRenderer::GetRenderTarget(RenderTargetIndex index) const
 {
-	return m_color.get();
+	return m_renderTargets[index].get();
 }
 
 DepthStencil* ObjectRenderer::GetDepthMap(DepthIndex index) const
 {
 	return m_depths[index].get();
-}
-
-ShaderResource* ObjectRenderer::GetIrradiance() const
-{
-	return m_lightProbes[IRRADIANCE_MAP].get();
 }
 
 const DepthStencil::uptr* ObjectRenderer::GetDepthMaps() const
@@ -341,28 +425,28 @@ bool ObjectRenderer::createPipelineLayouts()
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(0, 0, 0, Shader::Stage::VS);
 		pipelineLayout->SetRootCBV(1, 0, 0, Shader::Stage::PS);
-		pipelineLayout->SetRange(2, DescriptorType::SRV, 3, 0);
+		pipelineLayout->SetRange(2, DescriptorType::SRV, 1, 0);
 		pipelineLayout->SetConstants(3, 1, 1, 0, Shader::Stage::PS);
+		pipelineLayout->SetRootSRV(4, 1, 0, DescriptorFlag::NONE, Shader::Stage::PS);
+		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 2);
 		pipelineLayout->SetStaticSamplers(samplers, static_cast<uint32_t>(size(samplers)), 0, 0, Shader::PS);
 		pipelineLayout->SetShaderStage(0, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(2, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(5, Shader::Stage::PS);
 		X_RETURN(m_pipelineLayouts[BASE_PASS], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"BasePassLayout"), false);
 	}
 
-	// Environment mapping
-	if (m_lightProbes[RADIANCE_MAP])
+	// Temporal AA
 	{
-		const auto sampler = m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_WRAP);
-
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-		pipelineLayout->SetRootCBV(0, 0, 0, Shader::Stage::PS);
-		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 0);
-		pipelineLayout->SetShaderStage(1, Shader::Stage::PS);
-		pipelineLayout->SetStaticSamplers(&sampler, 1, 0, 0, Shader::PS);
-		X_RETURN(m_pipelineLayouts[ENVIRONMENT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
-			PipelineLayoutFlag::NONE, L"EnvironmentLayout"), false);
+		pipelineLayout->SetRange(0, DescriptorType::UAV, 1, 0, 0,
+			DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 3, 0);
+		pipelineLayout->SetStaticSamplers(&m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_WRAP), 1, 0);
+		X_RETURN(m_pipelineLayouts[TEMPORAL_AA], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			PipelineLayoutFlag::NONE, L"TemporalAALayout"), false);
 	}
 
 	// Tone mapping
@@ -381,6 +465,7 @@ bool ObjectRenderer::createPipelines(Format backFormat, Format rtFormat, Format 
 {
 	auto vsIndex = 0u;
 	auto psIndex = 0u;
+	auto csIndex = 0u;
 
 	// Depth pass
 	{
@@ -408,32 +493,26 @@ bool ObjectRenderer::createPipelines(Format backFormat, Format rtFormat, Format 
 		state->IASetInputLayout(m_pInputLayout);
 		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
 		//state->DSSetState(Graphics::DepthStencilPreset::DEFAULT_LESS, m_graphicsPipelineCache.get());
-		state->OMSetRTVFormats(&rtFormat, 1);
+		state->OMSetNumRenderTargets(2);
+		state->OMSetRTVFormat(0, rtFormat);
+		state->OMSetRTVFormat(1, Format::R16G16_FLOAT);
 		state->OMSetDSVFormat(dsFormat);
 		X_RETURN(m_pipelines[BASE_PASS], state->GetPipeline(m_graphicsPipelineCache.get(), L"BasePass"), false);
 	}
 
-	N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSScreenQuad.cso"), false);
-
-	// Environment mapping
-	if (m_lightProbes[RADIANCE_MAP])
+	// Temporal AA
 	{
-		
-		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSEnvironment.cso"), false);
+		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::CS, csIndex, L"CSTemporalAA.cso"), false);
 
-		const auto state = Graphics::State::MakeUnique();
-		state->SetPipelineLayout(m_pipelineLayouts[ENVIRONMENT]);
-		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, vsIndex));
-		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, psIndex++));
-		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
-		state->DSSetState(Graphics::DEPTH_READ_LESS_EQUAL, m_graphicsPipelineCache.get());
-		state->OMSetRTVFormats(&rtFormat, 1);
-		state->OMSetDSVFormat(dsFormat);
-		X_RETURN(m_pipelines[ENVIRONMENT], state->GetPipeline(m_graphicsPipelineCache.get(), L"Environment"), false);
+		const auto state = Compute::State::MakeUnique();
+		state->SetPipelineLayout(m_pipelineLayouts[TEMPORAL_AA]);
+		state->SetShader(m_shaderPool->GetShader(Shader::Stage::CS, csIndex++));
+		X_RETURN(m_pipelines[TEMPORAL_AA], state->GetPipeline(m_computePipelineCache.get(), L"TemporalAA"), false);
 	}
 
 	// Tone mapping
 	{
+		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSScreenQuad.cso"), false);
 		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSToneMap.cso"), false);
 
 		const auto state = Graphics::State::MakeUnique();
@@ -451,11 +530,34 @@ bool ObjectRenderer::createPipelines(Format backFormat, Format rtFormat, Format 
 
 bool ObjectRenderer::createDescriptorTables()
 {
-	// Create SRV tables
+	// Temporal AA output UAVs
+	for (auto i = 0u; i < 2; ++i)
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_color->GetSRV());
-		X_RETURN(m_srvTables[SRV_TABLE_COLOR], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+		descriptorTable->SetDescriptors(0, 1, &m_temporalViews[i]->GetUAV());
+		X_RETURN(m_uavTables[UAV_TABLE_TAA + i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+	}
+
+	// Temporal AA input SRVs
+	for (auto i = 0u; i < 2; ++i)
+	{
+		const Descriptor descriptors[] =
+		{
+			m_renderTargets[RT_COLOR]->GetSRV(),
+			m_temporalViews[!i]->GetSRV(),
+			m_renderTargets[RT_VELOCITY]->GetSRV()
+		};
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
+		X_RETURN(m_srvTables[SRV_TABLE_TAA + i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+	}
+
+	// Postprocess SRVs
+	for (auto i = 0u; i < 2; ++i)
+	{
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, 1, &m_temporalViews[i]->GetSRV());
+		X_RETURN(m_srvTables[SRV_TABLE_PP + i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
 	{
@@ -470,20 +572,6 @@ bool ObjectRenderer::createDescriptorTables()
 		X_RETURN(m_srvTables[SRV_TABLE_SHADOW], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
-	if (m_lightProbes[IRRADIANCE_MAP])
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_lightProbes[IRRADIANCE_MAP]->GetSRV());
-		X_RETURN(m_srvTables[SRV_TABLE_IRRADIANCE], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
-	}
-
-	if (m_lightProbes[RADIANCE_MAP])
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_lightProbes[RADIANCE_MAP]->GetSRV());
-		X_RETURN(m_srvTables[SRV_TABLE_RADIANCE], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
-	}
-
 	return true;
 }
 
@@ -496,12 +584,14 @@ void ObjectRenderer::render(const CommandList* pCommandList, uint8_t frameIndex)
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 
 	// Set descriptor tables
-	uint8_t hasLightProbes = m_lightProbes[IRRADIANCE_MAP] ? IRRADIANCE_BIT : 0;
-	hasLightProbes |= m_lightProbes[RADIANCE_MAP] ? RADIANCE_BIT : 0;
+	uint8_t hasLightProbes = m_coeffSH ? IRRADIANCE_BIT : 0;
+	hasLightProbes |= m_srvTables[SRV_TABLE_RADIANCE] ? RADIANCE_BIT : 0;
 	pCommandList->SetGraphicsRootConstantBufferView(0, m_cbPerObject.get(), m_cbPerObject->GetCBVOffset(frameIndex));
 	pCommandList->SetGraphicsRootConstantBufferView(1, m_cbPerFrame.get(), m_cbPerFrame->GetCBVOffset(frameIndex));
 	pCommandList->SetGraphicsDescriptorTable(2, m_srvTables[SRV_TABLE_SHADOW]);
 	pCommandList->SetGraphics32BitConstant(3, hasLightProbes);
+	if (m_coeffSH) pCommandList->SetGraphicsRootShaderResourceView(4, m_coeffSH.get());
+	if (m_srvTables[SRV_TABLE_RADIANCE]) pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_RADIANCE]);
 	pCommandList->IASetVertexBuffers(0, 1, &m_vertexBuffer->GetVBV());
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
 
@@ -523,18 +613,4 @@ void ObjectRenderer::renderDepth(const CommandList* pCommandList, uint8_t frameI
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
 
 	pCommandList->DrawIndexed(m_numIndices, 1, 0, 0, 0);
-}
-
-void ObjectRenderer::environment(const CommandList* pCommandList, uint8_t frameIndex)
-{
-	// Set descriptor tables
-	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[ENVIRONMENT]);
-	pCommandList->SetGraphicsRootConstantBufferView(0, m_cbPerFrameEnv.get(), m_cbPerFrameEnv->GetCBVOffset(frameIndex));
-	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_RADIANCE]);
-
-	// Set pipeline state
-	pCommandList->SetPipelineState(m_pipelines[ENVIRONMENT]);
-
-	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
-	pCommandList->Draw(3, 1, 0, 0);
 }
