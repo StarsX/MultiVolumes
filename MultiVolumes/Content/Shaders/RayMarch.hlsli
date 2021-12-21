@@ -171,6 +171,17 @@ float3 LocalToTex3DSpace(float3 pos)
 }
 
 //--------------------------------------------------------------------------------------
+// Get step
+//--------------------------------------------------------------------------------------
+min16float GetStep(min16float transm, min16float opacity, min16float stepScale)
+{
+	min16float step = max((1.0 - transm) * 2.0, 0.8) * stepScale;
+	step *= clamp(1.0 - opacity * 4.0, 0.5, 2.0);
+
+	return step;
+}
+
+//--------------------------------------------------------------------------------------
 // Get light
 //--------------------------------------------------------------------------------------
 float3 GetLight(float3 pos, float4x3 localToLight)

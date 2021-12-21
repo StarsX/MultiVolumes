@@ -71,6 +71,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		if (g_hasLightProbes)
 		{
 			aoRayDir = -GetDensityGradient(volume.VolTexId, uvw);
+			aoRayDir = any(abs(aoRayDir) > 0.0) ? aoRayDir : rayOrigin.xyz; // Avoid 0-gradient caused by uniform density field
 			irradiance = GetIrradiance(mul(aoRayDir, (float3x3)perObject.World));
 			aoRayDir = normalize(aoRayDir);
 		}
@@ -96,6 +97,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 				volume.VolTexId = WaveReadLaneFirst(volume.VolTexId);
 
 				float t = g_stepScale;
+				min16float step = g_stepScale;
 				for (uint i = 0; i < g_numSamples; ++i)
 				{
 					const float3 pos = localRayOrigin + rayDir * t;
@@ -106,11 +108,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
 					const min16float density = GetSample(volume.VolTexId, uvw).w;
 
 					// Attenuate ray-throughput along light direction
-					shadow *= 1.0 - GetOpacity(density, g_stepScale);
+					const min16float opacity = GetOpacity(density, step);
+					shadow *= 1.0 - opacity;
 					if (shadow < ZERO_THRESHOLD) break;
 
 					// Update position along light ray
-					t += g_stepScale;
+					step = GetStep(shadow, opacity, g_stepScale);
+					t += step;
 				}
 			}
 
@@ -118,6 +122,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 			if (g_hasLightProbes)
 			{
 				float t = g_stepScale;
+				min16float step = g_stepScale;
 				for (uint i = 0; i < g_numSamples; ++i)
 				{
 					const float3 pos = localRayOrigin.xyz + aoRayDir * t;
@@ -128,11 +133,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
 					const min16float density = GetSample(volume.VolTexId, uvw).w;
 
 					// Attenuate ray-throughput along light direction
-					ao *= 1.0 - GetOpacity(density, g_stepScale);
+					const min16float opacity = GetOpacity(density, step);
+					ao *= 1.0 - opacity;
 					if (ao < ZERO_THRESHOLD) break;
 
 					// Update position along light ray
-					t += g_stepScale;
+					step = GetStep(ao, opacity, g_stepScale);
+					t += step;
 				}
 			}
 #endif
