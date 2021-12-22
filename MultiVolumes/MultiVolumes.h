@@ -13,6 +13,7 @@
 
 #include "StepTimer.h"
 #include "MultiRayCaster.h"
+#include "LightProbe.h"
 #include "ObjectRenderer.h"
 
 using namespace DirectX;
@@ -65,7 +66,8 @@ private:
 
 	// App resources
 	std::unique_ptr<MultiRayCaster>	m_rayCaster;
-	std::unique_ptr<ObjectRenderer> m_objectRenderer;
+	std::unique_ptr<LightProbe>		m_lightProbe;
+	std::unique_ptr<ObjectRenderer>	m_objectRenderer;
 	XMFLOAT4X4	m_proj;
 	XMFLOAT4X4	m_view;
 	XMFLOAT3	m_focusPt;

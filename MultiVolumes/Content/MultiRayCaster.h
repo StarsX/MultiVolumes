@@ -24,6 +24,7 @@ public:
 	bool SetViewport(uint32_t width, uint32_t height);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
+	void SetSH(const XUSG::StructuredBuffer::sptr& coeffSH);
 	void SetIrradiance(const XUSG::ShaderResource* pIrradiance);
 	void SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples);
 	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);
@@ -77,7 +78,6 @@ protected:
 		SRV_TABLE_CUBE_DEPTH,
 		SRV_TABLE_K_COLORS,
 		SRV_TABLE_K_DEPTHS,
-		SRV_TABLE_IRRADIANCE,
 
 		NUM_SRV_TABLE
 	};
@@ -170,7 +170,7 @@ protected:
 	XUSG::TypedBuffer::uptr	m_volumeVis;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
-	const XUSG::ShaderResource* m_pIrradiance;
+	XUSG::StructuredBuffer::sptr	m_coeffSH;
 
 	XUSG::Resource::uptr		m_scratch;
 	XUSG::Resource::uptr		m_instances;

@@ -70,9 +70,11 @@ void main(uint3 DTid : SV_DispatchThreadID)
 #ifdef _HAS_LIGHT_PROBE_
 		if (g_hasLightProbes)
 		{
+			float3 shCoeffs[SH_NUM_COEFF];
+			LoadSH(shCoeffs, g_roSHCoeffs);
 			aoRayDir = -GetDensityGradient(volume.VolTexId, uvw);
 			aoRayDir = any(abs(aoRayDir) > 0.0) ? aoRayDir : rayOrigin.xyz; // Avoid 0-gradient caused by uniform density field
-			irradiance = GetIrradiance(mul(aoRayDir, (float3x3)perObject.World));
+			irradiance = GetIrradiance(shCoeffs, mul(aoRayDir, (float3x3)perObject.World));
 			aoRayDir = normalize(aoRayDir);
 		}
 #endif
