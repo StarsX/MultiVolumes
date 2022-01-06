@@ -204,7 +204,7 @@ bool MultiRayCaster::SetDepthMaps(const DepthStencil::uptr* depths)
 {
 	m_pDepths = depths;
 
-	return SetViewport(depths[DEPTH_MAP]->GetWidth(), depths[DEPTH_MAP]->GetHeight());
+	return SetViewport(static_cast<uint32_t>(depths[DEPTH_MAP]->GetWidth()), depths[DEPTH_MAP]->GetHeight());
 }
 
 bool MultiRayCaster::SetViewport(uint32_t width, uint32_t height)
@@ -990,7 +990,7 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 	pCommandList->SetCompute32BitConstant(3, m_maxRaySamples);
 
 	// Dispatch cube
-	const uint32_t numVolumes = m_volumeDescs->GetWidth() / sizeof(VolumeDesc);
+	const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
 	pCommandList->Dispatch(DIV_UP(numVolumes, GROUP_VOLUME_COUNT), 1, 1);
 }
 
