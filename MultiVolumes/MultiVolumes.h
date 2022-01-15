@@ -60,7 +60,7 @@ private:
 
 	bool m_isDxrSupported;
 
-	XUSG::RayTracing::Device::sptr	m_device;
+	XUSG::RayTracing::Device::uptr	m_device;
 	XUSG::RenderTarget::uptr		m_renderTargets[FrameCount];
 	XUSG::RayTracing::CommandList::uptr m_commandList;
 

@@ -11,7 +11,7 @@
 class MultiRayCaster
 {
 public:
-	MultiRayCaster(const XUSG::RayTracing::Device::sptr& device);
+	MultiRayCaster();
 	virtual ~MultiRayCaster();
 
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
@@ -20,12 +20,11 @@ public:
 		XUSG::RayTracing::GeometryBuffer* pGeometry);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
-	bool SetDepthMaps(const XUSG::DepthStencil::uptr* depths);
-	bool SetViewport(uint32_t width, uint32_t height);
+	bool SetDepthMaps(const XUSG::Device* pDevice, const XUSG::DepthStencil::uptr* depths);
+	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
 	void SetSH(const XUSG::StructuredBuffer::sptr& coeffSH);
-	void SetIrradiance(const XUSG::ShaderResource* pIrradiance);
 	void SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples);
 	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);
 	void SetVolumeWorld(uint32_t i, float size, const DirectX::XMFLOAT3& pos);
@@ -103,21 +102,19 @@ protected:
 	bool createCubeIB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders);
-	bool createPipelineLayouts();
+	bool createPipelineLayouts(const XUSG::Device* pDevice);
 	bool createPipelines(XUSG::Format rtFormat);
-	bool createCommandLayouts();
+	bool createCommandLayouts(const XUSG::Device* pDevice);
 	bool createDescriptorTables();
 	bool buildAccelerationStructures(XUSG::RayTracing::CommandList* pCommandList,
 		XUSG::RayTracing::GeometryBuffer* pGeometries);
-	bool buildShaderTables();
+	bool buildShaderTables(const XUSG::RayTracing::Device* pDevice);
 
 	void cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
-
-	XUSG::RayTracing::Device::sptr m_device;
 
 	XUSG::RayTracing::BottomLevelAS::uptr m_bottomLevelAS;
 	XUSG::RayTracing::TopLevelAS::uptr m_topLevelAS;

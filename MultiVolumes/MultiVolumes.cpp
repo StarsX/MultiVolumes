@@ -113,7 +113,7 @@ void MultiVolumes::LoadPipeline()
 		ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
 		EnableDirectXRaytracing(dxgiAdapter.get());
 
-		m_device = RayTracing::Device::MakeShared();
+		m_device = RayTracing::Device::MakeUnique();
 		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
 		N_RETURN(m_device->CreateInterface(createDeviceFlags), ThrowIfFailed(E_FAIL));
 	}
@@ -156,7 +156,7 @@ void MultiVolumes::LoadAssets()
 		m_commandAllocators[m_frameIndex].get(), nullptr), ThrowIfFailed(E_FAIL));
 
 	// Create ray tracing interfaces
-	N_RETURN(m_commandList->CreateInterface(m_device.get()), ThrowIfFailed(E_FAIL));
+	N_RETURN(m_commandList->CreateInterface(), ThrowIfFailed(E_FAIL));
 
 	// Clear color setting
 	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.2f };
@@ -169,12 +169,12 @@ void MultiVolumes::LoadAssets()
 
 	if (!m_radianceFile.empty())
 	{
-		X_RETURN(m_lightProbe, make_unique<LightProbe>(m_device), ThrowIfFailed(E_FAIL));
+		X_RETURN(m_lightProbe, make_unique<LightProbe>(), ThrowIfFailed(E_FAIL));
 		N_RETURN(m_lightProbe->Init(pCommandList, m_descriptorTableCache, uploaders,
 			m_radianceFile.c_str(), g_rtFormat, g_dsFormat), ThrowIfFailed(E_FAIL));
 	}
 
-	X_RETURN(m_objectRenderer, make_unique<ObjectRenderer>(m_device), ThrowIfFailed(E_FAIL));
+	X_RETURN(m_objectRenderer, make_unique<ObjectRenderer>(), ThrowIfFailed(E_FAIL));
 	N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
 		uploaders, m_meshFileName.c_str(), g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale),
 		ThrowIfFailed(E_FAIL));
@@ -182,7 +182,7 @@ void MultiVolumes::LoadAssets()
 	const auto numVolumeSrcs = static_cast<uint32_t>(size(m_volumeFiles));
 
 	GeometryBuffer geometry;
-	m_rayCaster = make_unique<MultiRayCaster>(m_device);
+	m_rayCaster = make_unique<MultiRayCaster>();
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
 		m_numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
@@ -274,8 +274,8 @@ void MultiVolumes::CreateResources()
 		N_RETURN(m_lightProbe->CreateDescriptorTables(), ThrowIfFailed(E_FAIL));
 		N_RETURN(m_objectRenderer->SetRadiance(m_lightProbe->GetRadiance()->GetSRV()), ThrowIfFailed(E_FAIL));
 	}
-	N_RETURN(m_objectRenderer->SetViewport(m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
-	N_RETURN(m_rayCaster->SetDepthMaps(m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
+	N_RETURN(m_objectRenderer->SetViewport(m_device.get(), m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
+	N_RETURN(m_rayCaster->SetDepthMaps(m_device.get(), m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
 
 	// Set the 3D rendering viewport and scissor rectangle to target the entire window.
 	//m_viewport = Viewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
