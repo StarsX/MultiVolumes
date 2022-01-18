@@ -159,10 +159,11 @@ void MultiVolumes::LoadAssets()
 	N_RETURN(m_commandList->CreateInterface(), ThrowIfFailed(E_FAIL));
 
 	// Clear color setting
-	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.2f };
+	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.0f };
 	m_clearColor = m_volumeFiles->empty() ? m_clearColor : DirectX::Colors::CornflowerBlue;
 	m_clearColor.v = XMVectorPow(m_clearColor, XMVectorReplicate(1.0f / 1.25f));
 	m_clearColor.v = 0.7f * m_clearColor / (XMVectorReplicate(1.25f) - m_clearColor);
+	m_clearColor.f[3] = 0.0f;
 
 	vector<Resource::uptr> uploaders(0);
 	m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);

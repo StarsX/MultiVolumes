@@ -9,7 +9,7 @@
 //--------------------------------------------------------------------------------------
 Texture2DArray	g_txKColors;
 
-float4 main(float4 Pos : SV_POSITION) : SV_TARGET
+min16float4 main(float4 Pos : SV_POSITION) : SV_TARGET
 {
 	const uint2 uv = Pos.xy;
 	min16float4 result = 0.0;
