@@ -610,10 +610,13 @@ void MultiVolumes::PopulateCommandList()
 	numBarriers = pShadow->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
-	// Clear render target
+	// Clear render targets
+	const float clear[4] = {};
+	const Descriptor pRTVs[] = { pColor->GetRTV(), pVelocity->GetRTV() };
 	pCommandList->ClearRenderTargetView(pColor->GetRTV(), m_clearColor);
+	pCommandList->ClearRenderTargetView(pVelocity->GetRTV(), clear);
 	pCommandList->ClearDepthStencilView(pDepth->GetDSV(), ClearFlag::DEPTH, 1.0f);
-	pCommandList->OMSetRenderTargets(1, &pColor->GetRTV(), &pDepth->GetDSV());
+	pCommandList->OMSetRenderTargets(static_cast<uint32_t>(size(pRTVs)), pRTVs, &pDepth->GetDSV());
 
 	// Set viewport
 	Viewport viewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
