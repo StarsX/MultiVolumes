@@ -55,4 +55,4 @@
 #endif
 #endif  // _DEBUG
 
-#define XUSG_ENABLE_DXR_FALLBACK	1
+#define _INDEPENDENT_SPHERICAL_HARMONICS_

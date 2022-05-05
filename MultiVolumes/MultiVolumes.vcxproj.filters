@@ -108,8 +108,14 @@
     <ClInclude Include="Content\LightProbe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Content\SHSharedConsts.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="XUSG\Advanced\XUSGHalton.h">
+      <Filter>XUSG\Advanced</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGSHSharedConsts.h">
+      <Filter>XUSG\Advanced</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGSphericalHarmonics.h">
+      <Filter>XUSG\Advanced</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -157,13 +163,13 @@
     <None Include="Content\Shaders\CSRayMarch.hlsl">
       <Filter>Shaders\RayCaster</Filter>
     </None>
-    <None Include="Content\Shaders\SHIrradiance.hlsli">
+    <None Include="XUSG\Shaders\CubeMap.hlsli">
       <Filter>Shaders\SHMath</Filter>
     </None>
-    <None Include="Content\Shaders\SHMath.hlsli">
+    <None Include="XUSG\Shaders\SHIrradiance.hlsli">
       <Filter>Shaders\SHMath</Filter>
     </None>
-    <None Include="Content\Shaders\CubeMap.hlsli">
+    <None Include="XUSG\Shaders\SHIrradianceTypeless.hlsli">
       <Filter>Shaders\SHMath</Filter>
     </None>
   </ItemGroup>
@@ -215,15 +221,6 @@
     </FxCompile>
     <FxCompile Include="Content\Shaders\PSToneMap.hlsl">
       <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Content\Shaders\CSSHCubeMap.hlsl">
-      <Filter>Shaders\SHMath</Filter>
-    </FxCompile>
-    <FxCompile Include="Content\Shaders\CSSHNormalize.hlsl">
-      <Filter>Shaders\SHMath</Filter>
-    </FxCompile>
-    <FxCompile Include="Content\Shaders\CSSHSum.hlsl">
-      <Filter>Shaders\SHMath</Filter>
     </FxCompile>
     <FxCompile Include="Content\Shaders\CSTemporalAA.hlsl">
       <Filter>Shaders</Filter>
