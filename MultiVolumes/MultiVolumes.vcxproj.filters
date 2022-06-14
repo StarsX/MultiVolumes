@@ -49,6 +49,9 @@
     <Filter Include="Shaders\SHMath">
       <UniqueIdentifier>{00a4318e-992f-4387-8f21-5cf53799c760}</UniqueIdentifier>
     </Filter>
+    <Filter Include="XUSG\Ultimate">
+      <UniqueIdentifier>{fc5d80dc-47c5-4363-b9c1-0657984d0e15}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Common\d3dx12.h">
@@ -116,6 +119,9 @@
     </ClInclude>
     <ClInclude Include="XUSG\Advanced\XUSGSphericalHarmonics.h">
       <Filter>XUSG\Advanced</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Ultimate\XUSGUltimate.h">
+      <Filter>XUSG\Ultimate</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
