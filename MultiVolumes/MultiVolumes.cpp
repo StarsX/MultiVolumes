@@ -176,9 +176,8 @@ void MultiVolumes::LoadAssets()
 	}
 
 	XUSG_X_RETURN(m_objectRenderer, make_unique<ObjectRenderer>(), ThrowIfFailed(E_FAIL));
-	XUSG_N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_width, m_height, m_descriptorTableCache,
-		uploaders, m_meshFileName.c_str(), g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale),
-		ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_descriptorTableCache, uploaders,
+		m_meshFileName.c_str(), g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale), ThrowIfFailed(E_FAIL));
 
 	const auto numVolumeSrcs = static_cast<uint32_t>(size(m_volumeFiles));
 
@@ -254,7 +253,7 @@ void MultiVolumes::CreateSwapchain()
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
 	XUSG_N_RETURN(m_swapChain->Create(m_factory.get(), Win32Application::GetHwnd(), m_commandQueue.get(),
-		FrameCount, m_width, m_height, g_backFormat), ThrowIfFailed(E_FAIL));
+		FrameCount, m_width, m_height, g_backFormat, SwapChainFlag::ALLOW_TEARING), ThrowIfFailed(E_FAIL));
 
 	// This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut.
 	ThrowIfFailed(m_factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
@@ -277,10 +276,6 @@ void MultiVolumes::CreateResources()
 	}
 	XUSG_N_RETURN(m_objectRenderer->SetViewport(m_device.get(), m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
 	XUSG_N_RETURN(m_rayCaster->SetDepthMaps(m_device.get(), m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
-
-	// Set the 3D rendering viewport and scissor rectangle to target the entire window.
-	//m_viewport = Viewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
-	//m_scissorRect = RectRange(0, 0, m_width, m_height);
 }
 
 // Update frame-based values.
@@ -337,7 +332,7 @@ void MultiVolumes::OnRender()
 	m_commandQueue->ExecuteCommandList(m_commandList.get());
 
 	// Present the frame.
-	XUSG_N_RETURN(m_swapChain->Present(0, 0), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_swapChain->Present(0, PresentFlag::ALLOW_TEARING), ThrowIfFailed(E_FAIL));
 
 	MoveToNextFrame();
 }
@@ -378,7 +373,7 @@ void MultiVolumes::OnWindowSizeChanged(int width, int height)
 	if (m_swapChain)
 	{
 		// If the swap chain already exists, resize it.
-		const auto hr = m_swapChain->ResizeBuffers(FrameCount, m_width, m_height, g_backFormat, 0);
+		const auto hr = m_swapChain->ResizeBuffers(FrameCount, m_width, m_height, g_backFormat, SwapChainFlag::ALLOW_TEARING);
 
 		if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
 		{
