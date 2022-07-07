@@ -40,18 +40,17 @@ struct PerObject
 
 struct VolumeDesc
 {
-	uint32_t VolTexId;
-	uint32_t NumMips;
+	uint16_t VolTexId;
+	uint16_t NumMips;
 	float CubeMapSize;
-	float Padding;
 };
 
-struct VisibleVolume
+struct VolumeInfo
 {
-	uint32_t VolumeId;
-	uint32_t Mip_SCnt;
-	uint32_t FaceMask;
-	uint32_t VolTexId;
+	uint16_t MipLevel;
+	uint16_t SmpCount;
+	uint16_t FaceMask;
+	uint16_t VolTexId;
 };
 
 const uint8_t g_numCubeMips = NUM_CUBE_MIP;
@@ -425,8 +424,8 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		for (auto i = 0u; i < volumeDescs.size(); ++i)
 		{
 			auto& volume = volumeDescs[i];
-			//volume.VolTexId = rand() % numVolumeSrcs;
-			volume.VolTexId = i % numVolumeSrcs;
+			//volume.VolTexId = static_cast<uint16_t>(rand() % numVolumeSrcs);
+			volume.VolTexId = static_cast<uint16_t>(i % numVolumeSrcs);
 			volume.NumMips = g_numCubeMips;
 			volume.CubeMapSize = static_cast<float>(m_gridSize);
 		}
@@ -451,7 +450,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 
 		m_visibleVolumes = StructuredBuffer::MakeUnique();
 		m_visibleVolumes->SetCounter(m_visibleVolumeCounter);
-		XUSG_N_RETURN(m_visibleVolumes->Create(pDevice, numVolumes, sizeof(VolumeDesc),
+		XUSG_N_RETURN(m_visibleVolumes->Create(pDevice, numVolumes, sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
 			1, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumes"), false);
 
@@ -459,6 +458,11 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		XUSG_N_RETURN(m_counterReset->Create(pDevice, 1, sizeof(uint32_t),
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
 			0, nullptr, MemoryFlag::NONE, L"RayCaster.CounterReset"), false);
+
+		m_volumeAttribs = TypedBuffer::MakeUnique();
+		XUSG_N_RETURN(m_volumeAttribs->Create(pDevice, numVolumes, sizeof(VolumeInfo),
+			Format::R16G16B16A16_UINT, ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT,
+			1, nullptr, 1, nullptr, MemoryFlag::NONE, L"RayCaster.VolumeAttributes"), false);
 
 		m_volumeDispatchArg = RawBuffer::MakeUnique();
 		XUSG_N_RETURN(m_volumeDispatchArg->Create(pDevice, sizeof(uint32_t[3]),
@@ -481,13 +485,6 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		const auto clear = 0u;
 		uploaders.emplace_back(Resource::MakeUnique());
 		XUSG_N_RETURN(m_counterReset->Upload(pCommandList, uploaders.back().get(), &clear, sizeof(uint32_t)), false);
-	}
-
-	{
-		m_volumeVis = TypedBuffer::MakeUnique();
-		XUSG_N_RETURN(m_volumeVis->Create(pDevice, numVolumes, sizeof(uint8_t),
-			Format::R8_UINT, ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT,
-			1, nullptr, 1, nullptr, MemoryFlag::NONE, L"RayCaster.VolumeVisibility"), false);
 	}
 
 	return true;
@@ -549,7 +546,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 3, 1, 0);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, g_numCubeMips * numVolumes, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::UAV, g_numCubeMips * numVolumes, 0, 1, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(4, DescriptorType::SRV, numVolumeSrcs, 0, 1);
@@ -564,7 +561,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 1, 0);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetShaderStage(0, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
@@ -578,7 +575,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 1, 0);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 1, 0);
 		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 1);
@@ -817,6 +814,12 @@ bool MultiRayCaster::createDescriptorTables()
 
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, 1, &m_volumeAttribs->GetSRV());
+		XUSG_X_RETURN(m_srvTables[SRV_TABLE_VOLUME_ATTRIBS], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+	}
+
+	{
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, 1, &m_lightMap->GetSRV());
 		XUSG_X_RETURN(m_srvTables[SRV_TABLE_LIGHT_MAP], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
@@ -887,7 +890,7 @@ bool MultiRayCaster::createDescriptorTables()
 		const Descriptor descriptors[] =
 		{
 			m_visibleVolumes->GetUAV(),
-			m_volumeVis->GetUAV()
+			m_volumeAttribs->GetUAV()
 		};
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
 		XUSG_X_RETURN(m_uavTables[UAV_TABLE_CULL], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
@@ -979,9 +982,9 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 	pCommandList->CopyResource(m_visibleVolumeCounter.get(), m_counterReset.get());
 
 	// Set barriers
-	m_visibleVolumes->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS); // Promotion
-	const auto numBarriers = m_volumeVis->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
-	pCommandList->Barrier(numBarriers, barriers);
+	m_visibleVolumes->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);	// Promotion
+	m_volumeAttribs->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);		// Promotion
+	//pCommandList->Barrier(numBarriers, barriers);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[VOLUME_CULL]);
@@ -1001,10 +1004,11 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 5);
 	m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST);	// Promotion
 	m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST);		// Promotion
 	auto numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE);
+	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE |
 		ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);

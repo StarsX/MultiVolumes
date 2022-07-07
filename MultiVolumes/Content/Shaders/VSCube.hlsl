@@ -38,8 +38,9 @@ static const float3x3 planes[6] =
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-StructuredBuffer<PerObject>		g_roPerObject		: register (t0);
-StructuredBuffer<VisibleVolume>	g_roVisibleVolumes	: register (t1);
+StructuredBuffer<PerObject>	g_roPerObject		: register (t0);
+StructuredBuffer<uint>		g_roVisibleVolumes	: register (t1);
+StructuredBuffer<uint4>		g_roVolumes			: register (t2);
 
 //--------------------------------------------------------------------------------------
 // Vertex shader used for cube rendering
@@ -51,11 +52,11 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	const uint faceId = vid / 4;
 	const uint vertId = vid % 4;
 
-	const VisibleVolume volumeInfo = g_roVisibleVolumes[iid];
-	const PerObject perObject = g_roPerObject[volumeInfo.VolumeId];
+	const uint volumeId = g_roVisibleVolumes[iid];
+	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
+	const PerObject perObject = g_roPerObject[volumeId];
 
-	const uint mipLevel = volumeInfo.Mip_SCnt >> 16;
-	const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolumeId + mipLevel;
+	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
 	const float2 uv = float2(vertId & 1, vertId >> 1);
 	const float2 pos2D = uv * 2.0 - 1.0;
@@ -65,7 +66,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	output.Pos = mul(float4(pos, 1.0), perObject.WorldViewProj);
 	output.UVW = float3(1.0 - uv.x, uv.y, faceId); // Exterior UV to interior UV
 	output.LPt = pos;
-	output.Ids.x = volumeInfo.VolumeId;
+	output.Ids.x = volumeId;
 	output.Ids.y = uavIdx;
 
 	return output;

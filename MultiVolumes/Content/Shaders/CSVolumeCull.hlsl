@@ -9,7 +9,7 @@
 // Structs
 //--------------------------------------------------------------------------------------
 typedef VolumeDesc VolumeIn;
-typedef VisibleVolume VolumeOut;
+typedef VolumeInfo VolumeOut;
 
 //--------------------------------------------------------------------------------------
 // Buffers
@@ -17,8 +17,8 @@ typedef VisibleVolume VolumeOut;
 StructuredBuffer<PerObject>	g_roPerObject;
 StructuredBuffer<VolumeIn>	g_roVolumes;
 
-AppendStructuredBuffer<VolumeOut> g_rwVisibleVolumes;
-RWBuffer<uint> g_rwVolumeVis;
+AppendStructuredBuffer<uint> g_rwVisibleVolumes;
+RWBuffer<uint4> g_rwVolumes;
 
 //--------------------------------------------------------------------------------------
 // Project to viewport space
@@ -193,17 +193,13 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	}
 
 	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
-		volumeIn.NumMips, volumeIn.CubeMapSize, v.xy, wTid);
+		GetNumMips(volumeIn), volumeIn.CubeMapSize, v.xy, wTid);
 	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid);
 
 	if (wTid.x == 0)
 	{
-		VolumeOut volumeOut;
-		volumeOut.VolumeId = volumeId;
-		volumeOut.Mip_SCnt = (mipLevel << 16) | raySampleCount;
-		volumeOut.FaceMask = faceMask;
-		volumeOut.VolTexId = volumeIn.VolTexId;
-
-		g_rwVisibleVolumes.Append(volumeOut);
+		const uint volTexId = GetSourceTextureId(volumeIn);
+		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, faceMask, volTexId);
+		g_rwVisibleVolumes.Append(volumeId);
 	}
 }

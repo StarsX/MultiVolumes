@@ -21,7 +21,7 @@ static const min16float g_stepScale = g_maxDist / min16float(g_numSamples);
 //--------------------------------------------------------------------------------------
 // Textures
 //--------------------------------------------------------------------------------------
-Texture3D<float3> g_txLightMap	: register (t2);
+Texture3D<float3> g_txLightMap	: register (t3);
 Texture3D<float4> g_txGrids[]	: register (t0, space1);
 
 #ifdef _HAS_DEPTH_MAP_

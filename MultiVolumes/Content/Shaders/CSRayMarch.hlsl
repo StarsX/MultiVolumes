@@ -13,8 +13,9 @@ RWTexture2DArray<float4> g_rwCubeMaps[]		: register (u0, space0);
 RWTexture2DArray<float> g_rwCubeDepths[]	: register (u0, space1);
 #endif
 
-StructuredBuffer<PerObject>		g_roPerObject		: register (t0);
-StructuredBuffer<VisibleVolume>	g_roVisibleVolumes	: register (t1);
+StructuredBuffer<PerObject>	g_roPerObject		: register (t0);
+StructuredBuffer<uint>		g_roVisibleVolumes	: register (t1);
+Buffer<uint4>				g_roVolumes			: register (t2);
 
 //--------------------------------------------------------------------------------------
 // Texture sampler
@@ -76,18 +77,19 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 [numthreads(8, 4, 6)]
 void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID)
 {
-	VisibleVolume volumeInfo = g_roVisibleVolumes[Gid.z];
+	uint volumeId = g_roVisibleVolumes[Gid.z];
+	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	volumeInfo.FaceMask = WaveReadLaneFirst(volumeInfo.FaceMask);
 
 	if ((volumeInfo.FaceMask & (1 << GTid.z)) == 0) return;
 
-	volumeInfo.VolumeId = WaveReadLaneFirst(volumeInfo.VolumeId);
-	const PerObject perObject = g_roPerObject[volumeInfo.VolumeId];
+	//volumeId = WaveReadLaneFirst(volumeId);
+	const PerObject perObject = g_roPerObject[volumeId];
 	float3 rayOrigin = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 
-	volumeInfo.Mip_SCnt = WaveReadLaneFirst(volumeInfo.Mip_SCnt);
-	const uint mipLevel = volumeInfo.Mip_SCnt >> 16;
-	const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolumeId + mipLevel;
+	//volumeInfo.MipLevel = WaveReadLaneFirst(volumeInfo.MipLevel);
+	volumeInfo.SmpCount = WaveReadLaneFirst(volumeInfo.SmpCount);
+	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
 	const float3 rayDir = normalize(target - rayOrigin);
 	const bool isHit = ComputeRayOrigin(rayOrigin, rayDir);
@@ -102,8 +104,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 #endif
 
 	volumeInfo.VolTexId = WaveReadLaneFirst(volumeInfo.VolTexId);
-	const uint numSamples = volumeInfo.Mip_SCnt & 0xffff;
-	const min16float stepScale = g_maxDist / min16float(numSamples);
+	const min16float stepScale = g_maxDist / min16float(volumeInfo.SmpCount);
 
 	// Transmittance
 	min16float transm = 1.0;
@@ -113,7 +114,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 	float t = 0.0;
 	min16float step = stepScale;
-	for (uint i = 0; i < numSamples; ++i)
+	for (uint i = 0; i < volumeInfo.SmpCount; ++i)
 	{
 		const float3 pos = rayOrigin + rayDir * t;
 		if (any(abs(pos) > 1.0)) break;

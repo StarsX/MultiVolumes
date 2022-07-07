@@ -70,6 +70,7 @@ protected:
 		SRV_TABLE_VOLUME_DESCS,
 		SRV_TABLE_VOLUME,
 		SRV_TABLE_VIS_VOLUMES,
+		SRV_TABLE_VOLUME_ATTRIBS,
 		SRV_TABLE_LIGHT_MAP,
 		SRV_TABLE_DEPTH,
 		SRV_TABLE_SHADOW,
@@ -161,10 +162,10 @@ protected:
 	XUSG::StructuredBuffer::uptr m_volumeDescs;
 	XUSG::StructuredBuffer::uptr m_visibleVolumes;
 	XUSG::StructuredBuffer::uptr m_counterReset;
+	XUSG::TypedBuffer::uptr m_volumeAttribs;
 	XUSG::RawBuffer::uptr	m_volumeDispatchArg;
 	XUSG::RawBuffer::uptr	m_volumeDrawArg;
 	XUSG::RawBuffer::sptr	m_visibleVolumeCounter;
-	XUSG::TypedBuffer::uptr	m_volumeVis;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	XUSG::StructuredBuffer::sptr	m_coeffSH;

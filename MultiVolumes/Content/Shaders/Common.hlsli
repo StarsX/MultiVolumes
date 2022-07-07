@@ -15,16 +15,14 @@
 //--------------------------------------------------------------------------------------
 struct VolumeDesc
 {
-	uint VolTexId;
-	uint NumMips;
+	uint TexId_NumMips;
 	float CubeMapSize;
-	float Padding;
 };
 
-struct VisibleVolume
+struct VolumeInfo
 {
-	uint VolumeId;
-	uint Mip_SCnt;	// Mip level and ray sample count
+	uint MipLevel;	// Mip level
+	uint SmpCount;	// Ray sample count
 	uint FaceMask;	// Cube-face visibility mask 
 	uint VolTexId;	// Volume texture Id
 };
@@ -64,3 +62,16 @@ cbuffer cbSampleRes
 // Texture sampler
 //--------------------------------------------------------------------------------------
 SamplerState g_smpLinear;
+
+//--------------------------------------------------------------------------------------
+// Helper functions
+//--------------------------------------------------------------------------------------
+uint GetNumMips(VolumeDesc volume)
+{
+	return volume.TexId_NumMips >> 16;
+}
+
+uint GetSourceTextureId(VolumeDesc volume)
+{
+	return volume.TexId_NumMips & 0xffff;
+}
