@@ -232,4 +232,7 @@
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="Content\Shaders\RTCube.hlsl" />
+  </ItemGroup>
 </Project>
