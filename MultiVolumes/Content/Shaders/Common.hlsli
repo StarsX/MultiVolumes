@@ -43,6 +43,7 @@ cbuffer cbPerFrame
 {
 	float3 g_eyePt;
 	float2 g_viewport;
+	float4x4 g_screenToWorld;
 	float4x3 g_lightMapWorld;
 	float4x4 g_shadowViewProj;
 	float4 g_lightPos;

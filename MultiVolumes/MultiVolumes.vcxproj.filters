@@ -233,6 +233,8 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="Content\Shaders\RTCube.hlsl" />
+    <CustomBuild Include="Content\Shaders\RTCube.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

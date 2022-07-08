@@ -22,6 +22,7 @@ struct CBPerFrame
 {
 	XMFLOAT4 EyePos;
 	XMFLOAT4 Viewport;
+	XMFLOAT4X4 ScreenToWorld;
 	XMFLOAT3X4 LightMapWorld;
 	XMFLOAT4X4 ShadowViewProj;
 	XMFLOAT4 LightPos;
@@ -306,6 +307,7 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 
 	// Per-frame
 	{
+		const auto projToWorld = XMMatrixInverse(nullptr, viewProj);
 		const auto pCbData = reinterpret_cast<CBPerFrame*>(m_cbPerFrame->Map(frameIndex));
 		pCbData->EyePos = XMFLOAT4(eyePt.x, eyePt.y, eyePt.z, 1.0f);
 		pCbData->Viewport = XMFLOAT4(width, height, 0.0f, 0.0f);
@@ -314,6 +316,7 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 		pCbData->LightPos = XMFLOAT4(m_lightPt.x, m_lightPt.y, m_lightPt.z, 1.0f);
 		pCbData->LightColor = m_lightColor;
 		pCbData->Ambient = m_ambient;
+		XMStoreFloat4x4(&pCbData->ScreenToWorld, XMMatrixTranspose(projToWorld));
 	}
 
 	// Per-object

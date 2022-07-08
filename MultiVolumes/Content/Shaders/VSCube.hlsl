@@ -40,7 +40,7 @@ static const float3x3 planes[6] =
 //--------------------------------------------------------------------------------------
 StructuredBuffer<PerObject>	g_roPerObject		: register (t0);
 StructuredBuffer<uint>		g_roVisibleVolumes	: register (t1);
-Buffer<uint4>		g_roVolumes			: register (t2);
+Buffer<uint4>				g_roVolumes			: register (t2);
 
 //--------------------------------------------------------------------------------------
 // Vertex shader used for cube rendering

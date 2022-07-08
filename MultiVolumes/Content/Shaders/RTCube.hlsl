@@ -1,36 +1,28 @@
 #include "PSCube.hlsli"
 
-struct GlobalCB
-{
-    float4 EyePos;
-    matrix ScreenToWorld;
-};
-
-ConstantBuffer<GlobalCB> g_cb : register (b0);
-RaytracingAccelerationStructure Scene : register(t0);
-Buffer<uint4>	g_roVolumes	: register (t1);
-
-RWTexture2D<float4> RenderTarget : register(u0);
-
 typedef BuiltInTriangleIntersectionAttributes Attributes;
+
+//--------------------------------------------------------------------------------------
+// Structure
+//--------------------------------------------------------------------------------------
 struct RayPayload
 {
     float4 Color;
     float T;
 };
 
+//--------------------------------------------------------------------------------------
+// Buffers and textures
+//--------------------------------------------------------------------------------------
+RaytracingAccelerationStructure Scene : register(t0);
+Buffer<uint4> g_roVolumes : register (t1);
+
+RWTexture2D<float4> RenderTarget : register(u0);
+
 // Retrieve hit world position.
 float3 HitWorldPosition()
 {
     return WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
-}
-
-// Retrieve attribute at a hit position interpolated from vertex attributes using the hit's barycentrics.
-float3 HitAttribute(float3 vertexAttribute[3], Attributes attr)
-{
-    return vertexAttribute[0] +
-        attr.barycentrics.x * (vertexAttribute[1] - vertexAttribute[0]) +
-        attr.barycentrics.y * (vertexAttribute[2] - vertexAttribute[0]);
 }
 
 uint GetVertId(uint primId, uint i)
@@ -64,18 +56,17 @@ inline void GenerateCameraRay(uint2 index, out float3 origin, out float3 directi
     screenPos.y = -screenPos.y;
 
     // Unproject the pixel coordinate into a ray.
-    float4 world = mul(float4(screenPos, 0, 1), g_cb.ScreenToWorld);
+    float4 world = mul(float4(screenPos, 0, 1), g_screenToWorld);
 
     world.xyz /= world.w;
-    origin = g_cb.EyePos.xyz;
+    origin = g_eyePt;
     direction = normalize(world.xyz - origin);
 }
 
 [shader("raygeneration")]
 void RaygenShader()
 {
-    float3 rayDir;
-    float3 origin;
+    float3 rayDir, origin;
 
     // Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
     GenerateCameraRay(DispatchRaysIndex().xy, origin, rayDir);
@@ -89,8 +80,8 @@ void RaygenShader()
     // TMin should be kept small to prevent missing geometry at close contact areas.
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
-    RayPayload payload = { float4(0, 0, 0, 0), 0.0 };
 
+    RayPayload payload = (RayPayload)0;
     for (int i = 0; i < NUM_OIT_LAYERS; ++i)
     {
         TraceRay(Scene, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
@@ -104,16 +95,18 @@ void RaygenShader()
 [shader("closesthit")]
 void ClosestHitShader(inout RayPayload payload, in Attributes attr)
 {
+    const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[InstanceID()];
+    const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolTexId + volumeInfo.MipLevel;
+
     const float3 localRayDir = mul(WorldRayDirection(), (float3x3)WorldToObject4x3());
     const float3 localPos = mul(float4(HitWorldPosition(), 1.0), WorldToObject4x3());
+
     const uint primId = PrimitiveIndex();
     const uint faceId = primId / 2;
     const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
 
-    const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[InstanceID()];
-    const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolTexId + volumeInfo.MipLevel;
-
     const float4 color = CubeCast(DispatchRaysIndex().xy, uvw, localPos, localRayDir, uavIdx);
+
     payload.Color += color * (1.0 - payload.Color.a);
     payload.T = RayTCurrent() + 0.001;
 }
@@ -122,4 +115,3 @@ void ClosestHitShader(inout RayPayload payload, in Attributes attr)
 void MissShader(inout RayPayload payload)
 {
 }
-
