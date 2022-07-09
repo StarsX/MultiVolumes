@@ -139,20 +139,16 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	// create command layout
 	XUSG_N_RETURN(createCommandLayouts(pDevice), false);
 
-	const float aabb[] = { -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
-	m_vertexBuffer = VertexBuffer::MakeUnique();
-	XUSG_N_RETURN(m_vertexBuffer->Create(pDevice, 1, sizeof(float[6]), ResourceFlag::NONE,
-		MemoryType::DEFAULT, 1, nullptr, 0, nullptr, 0, nullptr, MemoryFlag::NONE, L"AABB"), false);
-	uploaders.emplace_back(Resource::MakeUnique());
-	XUSG_N_RETURN(m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), aabb, sizeof(float[6])), false);
-
+	XUSG_N_RETURN(createCubeVB(pCommandList, uploaders), false);
 	XUSG_N_RETURN(createCubeIB(pCommandList, uploaders), false);
 
-	//XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
-	XUSG_N_RETURN(createDescriptorTables(), false);
-
+	// Set world transforms
 	m_volumeWorlds.resize(numVolumes);
 	SetVolumesWorld(20.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
+
+	// Build acceleration structures
+	XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
+	//XUSG_N_RETURN(createDescriptorTables(), false); // included in buildAccelerationStructures()
 
 	return true;
 }
@@ -385,6 +381,55 @@ const DescriptorTable& MultiRayCaster::GetLightSRVTable() const
 Resource* MultiRayCaster::GetLightMap() const
 {
 	return m_lightMap.get();
+}
+
+bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
+{
+	// pos
+	//-1.0f,  1.0f,  1.0f,
+	// 1.0f,  1.0f,  1.0f,
+	//-1.0f, -1.0f,  1.0f,
+	// 1.0f, -1.0f,  1.0f,
+	const float vertices[] = { 
+		// back plane
+		 1.0f,  1.0f, 1.0f, 
+		-1.0f,  1.0f, 1.0f, 
+		 1.0f, -1.0f, 1.0f,
+		-1.0f, -1.0f, 1.0f,
+		// left plane
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
+		// front plane
+		-1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+		// right plane
+		 1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f,  1.0f,
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f,  1.0f,
+		// top plane
+		 1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		// bottom plane
+		 1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+	};
+
+	m_vertexBuffer = VertexBuffer::MakeUnique();
+	XUSG_N_RETURN(m_vertexBuffer->Create(pCommandList->GetDevice(), static_cast<uint32_t>(size(vertices) / 3), 
+		static_cast<uint32_t>(sizeof(float[3])), ResourceFlag::NONE, MemoryType::DEFAULT, 1, 
+		nullptr, 0, nullptr, 0, nullptr, MemoryFlag::NONE, L"CubeVB"), false);
+	uploaders.emplace_back(Resource::MakeUnique());
+
+	return m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), vertices, sizeof(vertices));
 }
 
 bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
@@ -914,17 +959,21 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 	const auto pDevice = pCommandList->GetRTDevice();
 
 	// Set geometries
-	BottomLevelAS::SetAABBGeometries(*pGeometry, 1, &m_vertexBuffer->GetVBV());
+	BottomLevelAS::SetTriangleGeometries(*pGeometry, 1, Format::R32G32B32_FLOAT,
+		&m_vertexBuffer->GetVBV(), &m_indexBuffer->GetIBV());
 
 	// Descriptor index in descriptor pool
 	const auto bottomLevelASIndex = 0u;
 	const auto topLevelASIndex = bottomLevelASIndex + 1;
 
+	assert(m_volumeWorlds.size() == m_cubeMaps.size());
+	const auto numVolumes = static_cast<uint32_t>(m_volumeWorlds.size());
+
 	// Prebuild
 	m_bottomLevelAS = BottomLevelAS::MakeUnique();
 	m_topLevelAS = TopLevelAS::MakeUnique();
 	XUSG_N_RETURN(m_bottomLevelAS->PreBuild(pDevice, 1, *pGeometry, bottomLevelASIndex), false);
-	XUSG_N_RETURN(m_topLevelAS->PreBuild(pDevice, 1, topLevelASIndex), false);
+	XUSG_N_RETURN(m_topLevelAS->PreBuild(pDevice, numVolumes, topLevelASIndex), false);
 
 	// Create scratch buffer
 	auto scratchSize = m_topLevelAS->GetScratchDataMaxSize();
@@ -937,10 +986,12 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 	const auto& descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
 
 	// Set instance
-	float* const pTransform[] = { reinterpret_cast<float*>(&m_volumeWorlds[0]) };
+	vector<float*> transforms(numVolumes);
+	for (auto i = 0u; i < numVolumes; ++i)
+		transforms[i] = reinterpret_cast<float*>(&m_volumeWorlds[i]);
 	m_instances = Resource::MakeUnique();
-	const BottomLevelAS* ppBottomLevelAS[] = { m_bottomLevelAS.get() };
-	TopLevelAS::SetInstances(pDevice, m_instances.get(), 1, ppBottomLevelAS, pTransform);
+	vector<const BottomLevelAS*> pBottomLevelASs(numVolumes, m_bottomLevelAS.get());
+	TopLevelAS::SetInstances(pDevice, m_instances.get(), numVolumes, pBottomLevelASs.data(), transforms.data());
 
 	// Build bottom level ASs
 	m_bottomLevelAS->Build(pCommandList, m_scratch.get(), descriptorPool);

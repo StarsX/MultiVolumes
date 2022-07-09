@@ -100,6 +100,7 @@ protected:
 		SHADOW_MAP
 	};
 
+	bool createCubeVB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createCubeIB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders);
