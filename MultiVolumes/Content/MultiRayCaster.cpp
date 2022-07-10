@@ -149,6 +149,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	// Build acceleration structures
 	XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
 	//XUSG_N_RETURN(createDescriptorTables(), false); // included in buildAccelerationStructures()
+	XUSG_N_RETURN(buildShaderTables(pDevice), false);
 
 	return true;
 }
@@ -650,6 +651,21 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 			PipelineLayoutFlag::NONE, L"ResolveOITLayout"), false);
 	}
 
+	// Ray Tracing
+	{
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRootSRV(0, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 1);
+		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0);
+		pipelineLayout->SetRange(3, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 1);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 2);
+		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 3);
+		pipelineLayout->SetRange(6, DescriptorType::SAMPLER, 1, 0);
+		XUSG_X_RETURN(m_pipelineLayouts[RAY_TRACING], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			PipelineLayoutFlag::NONE, L"RayTracingLayout"), false);
+	}
+
 	return true;
 }
 
@@ -755,6 +771,19 @@ bool MultiRayCaster::createPipelines(Format rtFormat)
 		state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
 		state->OMSetRTVFormats(&rtFormat, 1);
 		XUSG_X_RETURN(m_pipelines[RESOLVE_OIT], state->GetPipeline(m_graphicsPipelineCache.get(), L"ResolveOIT"), false);
+	}
+
+	// Ray Tracing
+	{
+		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::CS, csIndex, L"RTCube.cso"), false);
+
+		const auto state = RayTracing::State::MakeUnique();
+		state->SetShaderLibrary(m_shaderPool->GetShader(Shader::Stage::CS, csIndex++));
+		state->SetHitGroup(0, HitGroupName, ClosestHitShaderName);
+		state->SetShaderConfig(sizeof(float[5]), sizeof(float[2]));
+		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_TRACING]);
+		state->SetMaxRecursionDepth(1);
+		XUSG_X_RETURN(m_pipelines[RAY_TRACING], state->GetPipeline(m_rayTracingPipelineCache.get(), L"Raytracing"), false);
 	}
 
 	return true;

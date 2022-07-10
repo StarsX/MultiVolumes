@@ -11,11 +11,20 @@ struct RayPayload
     float T;
 };
 
+struct GlobalCB
+{
+    float3 EyePt;
+    float2 Viewport;
+    float4x4 ScreenToWorld;
+};
+
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
+ConstantBuffer<GlobalCB> g_cb : register(b0);
+
 RaytracingAccelerationStructure Scene : register(t0);
-Buffer<uint4> g_roVolumes : register (t1);
+Buffer<uint4> g_roVolumes : register(t1);
 
 RWTexture2D<float4> RenderTarget : register(u0);
 
@@ -56,15 +65,15 @@ inline void GenerateCameraRay(uint2 index, out float3 origin, out float3 directi
     screenPos.y = -screenPos.y;
 
     // Unproject the pixel coordinate into a ray.
-    float4 world = mul(float4(screenPos, 0, 1), g_screenToWorld);
+    float4 world = mul(float4(screenPos, 0, 1), g_cb.ScreenToWorld);
 
     world.xyz /= world.w;
-    origin = g_eyePt;
+    origin = g_cb.EyePt;
     direction = normalize(world.xyz - origin);
 }
 
 [shader("raygeneration")]
-void RaygenShader()
+void raygenMain()
 {
     float3 rayDir, origin;
 
@@ -93,7 +102,7 @@ void RaygenShader()
 }
 
 [shader("closesthit")]
-void ClosestHitShader(inout RayPayload payload, in Attributes attr)
+void closestHitMain(inout RayPayload payload, in Attributes attr)
 {
     const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[InstanceID()];
     const uint uavIdx = NUM_CUBE_MIP * volumeInfo.VolTexId + volumeInfo.MipLevel;
@@ -112,6 +121,6 @@ void ClosestHitShader(inout RayPayload payload, in Attributes attr)
 }
 
 [shader("miss")]
-void MissShader(inout RayPayload payload)
+void missMain(inout RayPayload payload)
 {
 }
