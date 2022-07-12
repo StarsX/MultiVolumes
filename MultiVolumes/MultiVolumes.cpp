@@ -185,8 +185,8 @@ void MultiVolumes::LoadAssets()
 	m_rayCaster = make_unique<MultiRayCaster>();
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
-		m_numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders, &geometry))
-		ThrowIfFailed(E_FAIL);
+		m_numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders,
+		m_isDxrSupported ? &geometry : nullptr)) ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
@@ -274,8 +274,10 @@ void MultiVolumes::CreateResources()
 		XUSG_N_RETURN(m_lightProbe->CreateDescriptorTables(m_device.get()), ThrowIfFailed(E_FAIL));
 		XUSG_N_RETURN(m_objectRenderer->SetRadiance(m_lightProbe->GetRadiance()->GetSRV()), ThrowIfFailed(E_FAIL));
 	}
-	XUSG_N_RETURN(m_objectRenderer->SetViewport(m_device.get(), m_width, m_height, g_rtFormat, g_dsFormat, m_clearColor), ThrowIfFailed(E_FAIL));
-	XUSG_N_RETURN(m_rayCaster->SetDepthMaps(m_device.get(), m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_objectRenderer->SetViewport(m_device.get(), m_width, m_height,
+		g_rtFormat, g_dsFormat, m_clearColor, true), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_rayCaster->SetDepthMaps(m_device.get(), m_objectRenderer->GetDepthMaps(),
+		m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_COLOR)), ThrowIfFailed(E_FAIL));
 }
 
 // Update frame-based values.
@@ -602,6 +604,7 @@ void MultiVolumes::PopulateCommandList()
 	const auto pDepth = m_objectRenderer->GetDepthMap(ObjectRenderer::DEPTH_MAP);
 	const auto pShadow = m_objectRenderer->GetDepthMap(ObjectRenderer::SHADOW_MAP);
 	auto numBarriers = pColor->SetBarrier(barriers, ResourceState::RENDER_TARGET);
+	numBarriers = pVelocity->SetBarrier(barriers, ResourceState::RENDER_TARGET, numBarriers);
 	numBarriers = pDepth->SetBarrier(barriers, ResourceState::DEPTH_WRITE, numBarriers);
 	numBarriers = pShadow->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
@@ -622,7 +625,7 @@ void MultiVolumes::PopulateCommandList()
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
 	if (m_lightProbe) m_lightProbe->RenderEnvironment(pCommandList, m_frameIndex);
-	m_rayCaster->Render(pCommandList, m_frameIndex, g_updateLight);
+	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, g_updateLight);
 	g_updateLight = false;
 
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);

@@ -20,8 +20,8 @@ public:
 		XUSG::RayTracing::GeometryBuffer* pGeometry);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
-	bool SetDepthMaps(const XUSG::Device* pDevice, const XUSG::DepthStencil::uptr* depths);
-	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height);
+	bool SetDepthMaps(const XUSG::Device* pDevice, const XUSG::DepthStencil::uptr* depths, const XUSG::Texture* pOutView);
+	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const XUSG::Texture* pOutView);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
 	void SetSH(const XUSG::StructuredBuffer::sptr& coeffSH);
@@ -32,7 +32,7 @@ public:
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
-	void Render(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool updateLight);
+	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::Texture* pOutView, bool updateLight);
 	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const XUSG::DescriptorTable& GetLightSRVTable() const;
@@ -90,6 +90,7 @@ protected:
 		UAV_TABLE_LIGHT_MAP,
 		UAV_TABLE_K_COLORS,
 		UAV_TABLE_K_DEPTHS,
+		UAV_TABLE_OUT,
 
 		NUM_UAV_TABLE
 	};
@@ -107,7 +108,7 @@ protected:
 	bool createPipelineLayouts(const XUSG::Device* pDevice);
 	bool createPipelines(XUSG::Format rtFormat);
 	bool createCommandLayouts(const XUSG::Device* pDevice);
-	bool createDescriptorTables();
+	bool createDescriptorTables(const XUSG::Texture* pOutView);
 	bool buildAccelerationStructures(XUSG::RayTracing::CommandList* pCommandList,
 		XUSG::RayTracing::GeometryBuffer* pGeometries);
 	bool buildShaderTables(const XUSG::RayTracing::Device* pDevice);
@@ -117,6 +118,7 @@ protected:
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void traceCube(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::Texture* pOutView);
 
 	XUSG::RayTracing::BottomLevelAS::uptr m_bottomLevelAS;
 	XUSG::RayTracing::TopLevelAS::uptr m_topLevelAS;
@@ -184,4 +186,8 @@ protected:
 	DirectX::XMFLOAT4		m_ambient;
 	DirectX::XMFLOAT3X4		m_lightMapWorld;
 	std::vector<DirectX::XMFLOAT3X4> m_volumeWorlds;
+
+	DirectX::XMUINT2		m_viewport;
+
+	bool m_useRayTracing;
 };
