@@ -401,53 +401,48 @@ Resource* MultiRayCaster::GetLightMap() const
 
 bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
 {
-	// pos
-	//-1.0f,  1.0f,  1.0f,
-	// 1.0f,  1.0f,  1.0f,
-	//-1.0f, -1.0f,  1.0f,
-	// 1.0f, -1.0f,  1.0f,
-	const float vertices[] =
-	{ 
-		// back plane
-		 1.0f,  1.0f, 1.0f, 
-		-1.0f,  1.0f, 1.0f, 
-		 1.0f, -1.0f, 1.0f,
-		-1.0f, -1.0f, 1.0f,
-		// left plane
-		-1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f, -1.0f,
-		-1.0f, -1.0f,  1.0f,
-		-1.0f, -1.0f, -1.0f,
-		// front plane
-		-1.0f,  1.0f, -1.0f,
-		 1.0f,  1.0f, -1.0f,
-		-1.0f, -1.0f, -1.0f,
-		 1.0f, -1.0f, -1.0f,
-		// right plane
-		 1.0f,  1.0f, -1.0f,
-		 1.0f,  1.0f,  1.0f,
-		 1.0f, -1.0f, -1.0f,
-		 1.0f, -1.0f,  1.0f,
-		// top plane
-		 1.0f, -1.0f,  1.0f,
-		-1.0f, -1.0f,  1.0f,
-		 1.0f, -1.0f, -1.0f,
-		-1.0f, -1.0f, -1.0f,
-		// bottom plane
-		 1.0f,  1.0f, -1.0f,
-		-1.0f,  1.0f, -1.0f,
-		 1.0f,  1.0f,  1.0f,
-		-1.0f,  1.0f,  1.0f,
+	static const auto CubeVertices = [] {
+		const XMFLOAT3X3 planes[6] =
+		{
+			// back plane
+			XMFLOAT3X3(-1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
+			// left plane
+			XMFLOAT3X3(0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f),
+			// front plane
+			XMFLOAT3X3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f),
+			// right plane
+			XMFLOAT3X3(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f),
+			// top plane
+			XMFLOAT3X3(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
+			// bottom plane
+			XMFLOAT3X3(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f)
+		};
+
+		const uint32_t cubeVertexCount = 24;
+		std::vector<XMFLOAT3> cubeVertices(cubeVertexCount);
+		for (uint8_t i = 0; i < cubeVertexCount; ++i)
+		{
+			const auto faceId = i / 4;
+			const auto vertId = i % 4;
+			const XMFLOAT2 uv = { 1.0f * (vertId & 1), 1.0f * (vertId >> 1) };
+			const XMFLOAT2 pos2D = XMFLOAT2(2.0f * uv.x - 1.0f, 2.0f * uv.y - 1.0f);
+			XMFLOAT3 pos = XMFLOAT3(pos2D.x, -pos2D.y, 1.0);
+			XMVECTOR result = XMVector3Transform(XMLoadFloat3(&pos), XMMatrixTranspose(XMLoadFloat3x3(&planes[faceId])));
+			XMStoreFloat3(&cubeVertices[i], result);
+		}
+
+		return cubeVertices;
 	};
+	static const std::vector<XMFLOAT3> vertices = CubeVertices();
 
 	m_vertexBuffer = VertexBuffer::MakeUnique();
-	XUSG_N_RETURN(m_vertexBuffer->Create(pCommandList->GetDevice(), static_cast<uint32_t>(size(vertices) / 3), 
-		static_cast<uint32_t>(sizeof(float[3])), ResourceFlag::NONE, MemoryType::DEFAULT, 1, 
+	XUSG_N_RETURN(m_vertexBuffer->Create(pCommandList->GetDevice(), static_cast<uint32_t>(vertices.size()), 
+		static_cast<uint32_t>(sizeof(XMFLOAT3)), ResourceFlag::NONE, MemoryType::DEFAULT, 1,
 		nullptr, 0, nullptr, 0, nullptr, MemoryFlag::NONE, L"CubeVB"), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 
-	return m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), vertices,
-		sizeof(vertices), 0, ResourceState::NON_PIXEL_SHADER_RESOURCE);
+	return m_vertexBuffer->Upload(pCommandList, uploaders.back().get(), vertices.data(),
+		vertices.size() * sizeof(XMFLOAT3), 0, ResourceState::NON_PIXEL_SHADER_RESOURCE);
 }
 
 bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
