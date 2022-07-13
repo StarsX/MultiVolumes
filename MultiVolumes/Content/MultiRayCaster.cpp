@@ -7,6 +7,7 @@
 #define _INDEPENDENT_DDS_LOADER_
 #include "Advanced/XUSGDDSLoader.h"
 #undef _INDEPENDENT_DDS_LOADER_
+#include <array>
 
 using namespace std;
 using namespace DirectX;
@@ -401,8 +402,9 @@ Resource* MultiRayCaster::GetLightMap() const
 
 bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
 {
-	static const auto CubeVertices = [] {
-		const XMFLOAT3X3 planes[6] =
+	static const auto CubeVertices = []()
+	{
+		static const XMFLOAT3X3 planes[] =
 		{
 			// back plane
 			XMFLOAT3X3(-1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
@@ -418,22 +420,22 @@ bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resour
 			XMFLOAT3X3(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f)
 		};
 
-		const uint32_t cubeVertexCount = 24;
-		std::vector<XMFLOAT3> cubeVertices(cubeVertexCount);
+		const uint8_t cubeVertexCount = 24;
+		array<XMFLOAT3, cubeVertexCount> cubeVertices;
 		for (uint8_t i = 0; i < cubeVertexCount; ++i)
 		{
-			const auto faceId = i / 4;
-			const auto vertId = i % 4;
-			const XMFLOAT2 uv = { 1.0f * (vertId & 1), 1.0f * (vertId >> 1) };
-			const XMFLOAT2 pos2D = XMFLOAT2(2.0f * uv.x - 1.0f, 2.0f * uv.y - 1.0f);
-			XMFLOAT3 pos = XMFLOAT3(pos2D.x, -pos2D.y, 1.0);
-			XMVECTOR result = XMVector3Transform(XMLoadFloat3(&pos), XMMatrixTranspose(XMLoadFloat3x3(&planes[faceId])));
+			const uint8_t faceId = i / 4;
+			const uint8_t vertId = i % 4;
+			const XMFLOAT2 uv(1.0f * (vertId & 1), 1.0f * (vertId >> 1));
+			const XMFLOAT2 pos2D(2.0f * uv.x - 1.0f, 2.0f * uv.y - 1.0f);
+			const XMFLOAT3 pos(pos2D.x, -pos2D.y, 1.0);
+			const auto result = XMVector3Transform(XMLoadFloat3(&pos), XMLoadFloat3x3(&planes[faceId]));
 			XMStoreFloat3(&cubeVertices[i], result);
 		}
 
 		return cubeVertices;
 	};
-	static const std::vector<XMFLOAT3> vertices = CubeVertices();
+	static const auto vertices = CubeVertices();
 
 	m_vertexBuffer = VertexBuffer::MakeUnique();
 	XUSG_N_RETURN(m_vertexBuffer->Create(pCommandList->GetDevice(), static_cast<uint32_t>(vertices.size()), 
@@ -447,7 +449,7 @@ bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resour
 
 bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
 {
-	uint16_t indices[] =
+	static const uint16_t indices[] =
 	{
 		0, 1, 2, 3, 2, 1,
 		4, 5, 6, 7, 6, 5,
@@ -463,7 +465,7 @@ bool MultiRayCaster::createCubeIB(XUSG::CommandList* pCommandList, vector<Resour
 	uploaders.emplace_back(Resource::MakeUnique());
 
 	return m_indexBuffer->Upload(pCommandList, uploaders.back().get(), indices,
-		sizeof(indices), 0, ResourceState::NON_PIXEL_SHADER_RESOURCE);
+		sizeof(indices), 0, ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::INDEX_BUFFER);
 }
 
 bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,

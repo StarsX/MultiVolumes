@@ -35,10 +35,10 @@ Buffer<uint4> g_roVolumes : register (t1);
 
 RWTexture2D<float4> g_renderTarget : register (u0);
 
-// Retrieve hit world position.
-float3 HitWorldPosition()
+// Retrieve hit object position.
+float3 HitObjectPosition()
 {
-	return WorldRayOrigin() + RayTCurrent() * WorldRayDirection();
+	return ObjectRayOrigin() + RayTCurrent() * ObjectRayDirection();
 }
 
 uint GetVertId(uint primId, uint i)
@@ -56,6 +56,7 @@ float2 GetVertUV(uint primId, uint i)
 
 float2 GetUV(uint primId, float2 baryc)
 {
+	baryc = 1.0 - baryc;
 	const float2 uv0 = GetVertUV(primId, 0);
 	const float2 uv1 = GetVertUV(primId, 1);
 	const float2 uv2 = GetVertUV(primId, 2);
@@ -117,14 +118,14 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
-	const float3 localRayDir = mul(WorldRayDirection(), (float3x3)WorldToObject4x3());
-	const float3 localPos = mul(float4(HitWorldPosition(), 1.0), WorldToObject4x3());
+	const float3 pos = HitObjectPosition();
+	const float3 rayDir = ObjectRayDirection();
 
 	const uint primId = PrimitiveIndex();
 	const uint faceId = primId / 2;
 	const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
 
-	const float4 color = CubeCast(DispatchRaysIndex().xy, uvw, localPos, localRayDir, uavIdx);
+	const float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, uavIdx);
 
 	payload.Color += color * (1.0 - payload.Color.a);
 	payload.T = RayTCurrent() + 0.001;
