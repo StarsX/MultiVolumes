@@ -88,6 +88,7 @@ void raygenMain()
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
 	const uint2 index = DispatchRaysIndex().xy;
+	const float4 bgColor = g_renderTarget[index];
 	GenerateCameraRay(index, origin, rayDir);
 
 	// Trace the ray.
@@ -104,11 +105,11 @@ void raygenMain()
 	for (int i = 0; i < NUM_OIT_LAYERS; ++i)
 	{
 		TraceRay(g_scene, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
-		ray.TMin = payload.T;
+		ray.TMin = (payload.Color.a < 0.99) ? payload.T : ray.TMax;
 	}
 
 	// Write the raytraced color to the output texture.
-	g_renderTarget[index] = payload.Color;
+	g_renderTarget[index] = payload.Color + bgColor * (1.0 - payload.Color.a);
 }
 
 [shader("closesthit")]
