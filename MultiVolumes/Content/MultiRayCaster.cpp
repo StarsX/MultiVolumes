@@ -429,7 +429,7 @@ bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resour
 			const XMFLOAT2 uv(1.0f * (vertId & 1), 1.0f * (vertId >> 1));
 			const XMFLOAT2 pos2D(2.0f * uv.x - 1.0f, 2.0f * uv.y - 1.0f);
 			const XMFLOAT3 pos(pos2D.x, -pos2D.y, 1.0);
-			const auto result = XMVector3Transform(XMLoadFloat3(&pos), XMLoadFloat3x3(&planes[faceId]));
+			const auto result = XMVector3TransformNormal(XMLoadFloat3(&pos), XMLoadFloat3x3(&planes[faceId]));
 			XMStoreFloat3(&cubeVertices[i], result);
 		}
 

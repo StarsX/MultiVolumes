@@ -6,6 +6,8 @@
 
 #include "PSCube.hlsli"
 
+#define ONE_THRESHOLD 0.99
+
 typedef RaytracingAccelerationStructure RaytracingAS;
 typedef BuiltInTriangleIntersectionAttributes Attributes;
 
@@ -14,7 +16,7 @@ typedef BuiltInTriangleIntersectionAttributes Attributes;
 //--------------------------------------------------------------------------------------
 struct RayPayload
 {
-	float4 Color;
+	min16float4 Color;
 	float T;
 };
 
@@ -84,11 +86,11 @@ inline void GenerateCameraRay(uint2 index, out float3 origin, out float3 directi
 [shader("raygeneration")]
 void raygenMain()
 {
-	float3 rayDir, origin;
-
-	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
 	const uint2 index = DispatchRaysIndex().xy;
 	const float4 bgColor = g_renderTarget[index];
+
+	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
+	float3 rayDir, origin;
 	GenerateCameraRay(index, origin, rayDir);
 
 	// Trace the ray.
@@ -102,14 +104,14 @@ void raygenMain()
 	ray.TMax = 1000.0;
 
 	RayPayload payload = (RayPayload)0;
-	for (int i = 0; i < NUM_OIT_LAYERS; ++i)
+	for (uint i = 0; i < NUM_OIT_LAYERS; ++i)
 	{
 		TraceRay(g_scene, RAY_FLAG_CULL_FRONT_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
-		ray.TMin = (payload.Color.a < 0.99) ? payload.T : ray.TMax;
+		ray.TMin = payload.Color.w < ONE_THRESHOLD ? payload.T : ray.TMax;
 	}
 
 	// Write the raytraced color to the output texture.
-	g_renderTarget[index] = payload.Color + bgColor * (1.0 - payload.Color.a);
+	g_renderTarget[index] = payload.Color + min16float4(bgColor) * (1.0 - payload.Color.w);
 }
 
 [shader("closesthit")]
@@ -126,9 +128,9 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 	const uint faceId = primId / 2;
 	const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
 
-	const float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, uavIdx);
+	const min16float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, uavIdx);
 
-	payload.Color += color * (1.0 - payload.Color.a);
+	payload.Color += color * (1.0 - payload.Color.w);
 	payload.T = RayTCurrent() + 0.001;
 }
 
