@@ -45,7 +45,7 @@ float3 HitObjectPosition()
 
 uint GetVertId(uint primId, uint i)
 {
-	return (primId % 2) ? i : (3 - i);
+	return primId % 2 ? 3 - i : i;
 }
 
 float2 GetVertUV(uint primId, uint i)
@@ -58,7 +58,6 @@ float2 GetVertUV(uint primId, uint i)
 
 float2 GetUV(uint primId, float2 baryc)
 {
-	baryc = 1.0 - baryc;
 	const float2 uv0 = GetVertUV(primId, 0);
 	const float2 uv1 = GetVertUV(primId, 1);
 	const float2 uv2 = GetVertUV(primId, 2);
