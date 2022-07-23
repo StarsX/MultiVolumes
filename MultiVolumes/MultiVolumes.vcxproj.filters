@@ -231,6 +231,7 @@
     <FxCompile Include="Content\Shaders\CSTemporalAA.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Content\Shaders\PSCubeRT.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="Content\Shaders\RTCube.hlsl">
