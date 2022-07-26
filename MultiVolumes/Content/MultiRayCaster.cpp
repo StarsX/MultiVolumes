@@ -640,8 +640,8 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
-		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
-		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 1, 0);
+		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE); // g_rwKColors
+		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 1, 0); // g_txKDepths
 		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 1);
 		pipelineLayout->SetRange(5, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 2);
 		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 3);
@@ -655,6 +655,28 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
 		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"CubeRenderingLayout"), false);
+	}
+
+	// Cube rendering RT
+	{
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
+		pipelineLayout->SetRootSRV(2, 1, 0, DescriptorFlag::DATA_STATIC, Shader::Stage::PS);
+		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 2, 0);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 1);
+		pipelineLayout->SetRange(5, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 2);
+		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 3);
+		pipelineLayout->SetRange(7, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
+		pipelineLayout->SetShaderStage(3, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(4, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(5, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(6, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
+		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE_RT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			PipelineLayoutFlag::NONE, L"CubeRenderingRTLayout"), false);
 	}
 
 	// Resolve OIT
@@ -771,6 +793,25 @@ bool MultiRayCaster::createPipelines(Format rtFormat)
 		//state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
 		//state->OMSetRTVFormats(&rtFormat, 1);
 		XUSG_X_RETURN(m_pipelines[RENDER_CUBE], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeRendering"), false);
+	}
+
+
+	// Cube rendering RT
+	{
+		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCube.cso"), false);
+		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSCubeRT.cso"), false);
+
+		const auto state = Graphics::State::MakeUnique();
+		state->SetPipelineLayout(m_pipelineLayouts[RENDER_CUBE_RT]);
+		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, vsIndex++));
+		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, psIndex++));
+		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
+		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
+		state->DSSetState(Graphics::DEFAULT_LESS, m_graphicsPipelineCache.get());
+		state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
+		state->OMSetRTVFormats(&rtFormat, 1);
+		state->OMSetDSVFormat(Format::D32_FLOAT);
+		XUSG_X_RETURN(m_pipelines[RENDER_CUBE_RT], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeRenderingRT"), false);
 	}
 
 	// Resolve OIT
