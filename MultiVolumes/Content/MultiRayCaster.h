@@ -32,7 +32,7 @@ public:
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
-	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::Texture* pOutView, bool updateLight);
+	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pOutView, bool updateLight);
 	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const XUSG::DescriptorTable& GetLightSRVTable() const;
@@ -118,6 +118,7 @@ protected:
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pOutView);
 	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void traceCube(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::Texture* pOutView);
 
@@ -173,6 +174,7 @@ protected:
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	XUSG::StructuredBuffer::sptr	m_coeffSH;
+	XUSG::DepthStencil::uptr m_depth;
 
 	XUSG::Resource::uptr		m_scratch;
 	XUSG::Resource::uptr		m_instances;
