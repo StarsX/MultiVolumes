@@ -113,7 +113,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 		m_cubeMaps[i] = Texture2D::MakeUnique();
 		XUSG_N_RETURN(m_cubeMaps[i]->Create(pDevice, gridSize, gridSize, Format::R16G16B16A16_FLOAT, 6,
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, true, MemoryFlag::NONE,
-			(L"CubeMap" + to_wstring(i)).c_str()), false);
+			(L"RadianceCubeMap" + to_wstring(i)).c_str()), false);
 
 		m_cubeDepths[i] = Texture2D::MakeUnique();
 		XUSG_N_RETURN(m_cubeDepths[i]->Create(pDevice, gridSize, gridSize, Format::R32_FLOAT, 6,
@@ -204,7 +204,7 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	return true;
 }
 
-bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderTarget* pOutView, const DepthStencil::uptr* depths)
+bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderTarget* pColorOut, const DepthStencil::uptr* depths)
 {
 	m_pDepths = depths;
 
@@ -215,10 +215,10 @@ bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderT
 	XUSG_N_RETURN(m_depth->Create(pDevice, width, height, Format::D32_FLOAT, ResourceFlag::NONE,
 		1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"DepthIncCubes"), false);
 
-	return SetViewport(pDevice, width, height, pOutView);
+	return SetViewport(pDevice, width, height, pColorOut);
 }
 
-bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const Texture* pOutView)
+bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const Texture* pColorOut)
 {
 	m_viewport.x = width;
 	m_viewport.y = height;
@@ -231,7 +231,7 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 	XUSG_N_RETURN(m_kColors->Create(pDevice, width, height, Format::R16G16B16A16_FLOAT, NUM_OIT_LAYERS,
 		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, false, MemoryFlag::NONE, L"ColorKBuffer"), false);
 
-	XUSG_N_RETURN(createDescriptorTables(pOutView),false);
+	XUSG_N_RETURN(createDescriptorTables(pColorOut),false);
 
 	return true;
 }
@@ -357,13 +357,20 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 	}
 }
 
-void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pOutView, bool updateLight)
+void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut, bool updateLight)
 {
 	if (updateLight) RayMarchL(pCommandList, frameIndex);
 	cullVolumes(pCommandList, frameIndex);
 	rayMarchV(pCommandList, frameIndex);
-	//if (m_useRayTracing) traceCube(pCommandList, frameIndex, pOutView);
-	if(m_useRayTracing) renderCubeRT(pCommandList, frameIndex, pOutView);
+#if 0
+	if (m_useRayTracing) traceCube(pCommandList, frameIndex, pOutView);
+#else
+	if (m_useRayTracing)
+	{
+		renderDepth(pCommandList, frameIndex);
+		renderCubeRT(pCommandList, frameIndex, pColorOut);
+	}
+#endif
 	else
 	{
 		cubeDepthPeel(pCommandList, frameIndex);
@@ -641,6 +648,19 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 			PipelineLayoutFlag::NONE, L"CubeDepthPeelingLayout"), false);
 	}
 
+	// Depth prepass
+	if (m_useRayTracing)
+	{
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
+		pipelineLayout->SetShaderStage(0, Shader::Stage::VS);
+		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
+		XUSG_X_RETURN(m_pipelineLayouts[DEPTH_PASS], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			PipelineLayoutFlag::NONE, L"DepthPrepassLayout"), false);
+	}
+
 	// Cube rendering
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
@@ -771,9 +791,10 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		XUSG_X_RETURN(m_pipelines[RAY_MARCH_V], state->GetPipeline(m_computePipelineCache.get(), L"ViewSpaceRayMarching"), false);
 	}
 
+	XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCubeDP.cso"), false);
+
 	// Cube depth peeling
 	{
-		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCubeDP.cso"), false);
 		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSDepthPeel.cso"), false);
 
 		const auto state = Graphics::State::MakeUnique();
@@ -784,6 +805,19 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
 		state->DSSetState(Graphics::DEPTH_STENCIL_NONE, m_graphicsPipelineCache.get());
 		XUSG_X_RETURN(m_pipelines[CUBE_DEPTH_PEEL], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeDepthPeeling"), false);
+	}
+
+	// Depth prepass
+	if (m_useRayTracing)
+	{
+		const auto state = Graphics::State::MakeUnique();
+		state->SetPipelineLayout(m_pipelineLayouts[DEPTH_PASS]);
+		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, vsIndex - 1));
+		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
+		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
+		state->DSSetState(Graphics::DEFAULT_LESS, m_graphicsPipelineCache.get());
+		state->OMSetDSVFormat(dsFormat);
+		XUSG_X_RETURN(m_pipelines[DEPTH_PASS], state->GetPipeline(m_graphicsPipelineCache.get(), L"DepthPrepass"), false);
 	}
 
 	XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCube.cso"), false);
@@ -813,7 +847,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, psIndex++));
 		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
 		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
-		state->DSSetState(Graphics::DEFAULT_LESS, m_graphicsPipelineCache.get());
+		state->DSSetState(Graphics::DEPTH_READ_EQUAL, m_graphicsPipelineCache.get());
 		state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
 		state->OMSetRTVFormats(&rtFormat, 1);
 		state->OMSetDSVFormat(dsFormat);
@@ -872,7 +906,7 @@ bool MultiRayCaster::createCommandLayouts(const XUSG::Device* pDevice)
 	return true;
 }
 
-bool MultiRayCaster::createDescriptorTables(const Texture* pOutView)
+bool MultiRayCaster::createDescriptorTables(const Texture* pColorOut)
 {
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
 	const auto numVolumeSrcs = static_cast<uint32_t>(m_volumes.size());
@@ -1037,10 +1071,10 @@ bool MultiRayCaster::createDescriptorTables(const Texture* pOutView)
 		XUSG_X_RETURN(m_uavTables[UAV_TABLE_CULL], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
-	if (pOutView)
+	if (pColorOut)
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &pOutView->GetUAV());
+		descriptorTable->SetDescriptors(0, 1, &pColorOut->GetUAV());
 		XUSG_X_RETURN(m_uavTables[UAV_TABLE_OUT], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
@@ -1227,6 +1261,34 @@ void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t fram
 	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
+void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+{
+	// Set barrier
+	ResourceBarrier barriers[2];
+	auto numBarriers = m_depth->SetBarrier(barriers, ResourceState::DEPTH_WRITE);
+	numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT, numBarriers);
+	pCommandList->Barrier(numBarriers, barriers);
+
+	// Clear depth
+	const auto& pDSV = m_depth->GetDSV();
+	pCommandList->ClearDepthStencilView(pDSV, ClearFlag::DEPTH, 1.0f);
+	pCommandList->OMSetRenderTargets(0, nullptr, &pDSV);
+
+	// Set pipeline state
+	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[DEPTH_PASS]);
+	pCommandList->SetPipelineState(m_pipelines[DEPTH_PASS]);
+
+	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLESTRIP);
+
+	// Set descriptor tables
+	pCommandList->SetGraphicsDescriptorTable(0, m_cbvSrvTables[frameIndex]);
+	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
+
+	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
+	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
+	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
+}
+
 void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
@@ -1268,7 +1330,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 {
 	// Set barriers
 	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
-	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT);
+	auto numBarriers = m_depth->SetBarrier(barriers.data(), ResourceState::DEPTH_READ);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1276,9 +1338,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Set render target
-	const auto& pDSV = m_depth->GetDSV();
-	pCommandList->ClearDepthStencilView(pDSV, ClearFlag::DEPTH, 1.0f);
-	pCommandList->OMSetRenderTargets(1, &pOutView->GetRTV(), &pDSV);
+	pCommandList->OMSetRenderTargets(1, &pOutView->GetRTV(), &m_depth->GetDSV());
 
 	// Set pipeline state
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[RENDER_CUBE_RT]);
@@ -1319,11 +1379,11 @@ void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->Draw(3, 1, 0, 0);
 }
 
-void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t frameIndex, Texture* pOutView)
+void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t frameIndex, Texture* pColorOut)
 {
 	// Set barriers
 	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
-	auto numBarriers = pOutView->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
+	auto numBarriers = pColorOut->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)

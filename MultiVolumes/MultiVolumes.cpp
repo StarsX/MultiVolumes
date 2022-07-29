@@ -628,12 +628,7 @@ void MultiVolumes::PopulateCommandList()
 	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, g_updateLight);
 	g_updateLight = false;
 
-	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::RENDER_TARGET);
-	numBarriers = pColor->SetBarrier(barriers, ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers);
-	pCommandList->OMSetRenderTargets(1, &m_renderTargets[m_frameIndex]->GetRTV());
-
-	m_objectRenderer->Postprocess(pCommandList);
+	m_objectRenderer->Postprocess(pCommandList, m_renderTargets[m_frameIndex].get());
 	
 	// Indicate that the back buffer will now be used to present.
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(barriers, ResourceState::PRESENT);
