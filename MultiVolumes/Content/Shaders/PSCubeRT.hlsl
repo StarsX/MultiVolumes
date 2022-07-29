@@ -9,12 +9,10 @@
 #define ONE_THRESHOLD 0.99
 
 typedef RaytracingAccelerationStructure RaytracingAS;
-typedef BuiltInTriangleIntersectionAttributes TriAttributes;
 
 //--------------------------------------------------------------------------------------
 // Structure
 //--------------------------------------------------------------------------------------
-
 struct PSIn
 {
 	float4 Pos	: SV_POSITION;
@@ -23,7 +21,6 @@ struct PSIn
 	uint2 Ids	: INDICES;
 };
 
-
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
@@ -31,14 +28,8 @@ RaytracingAS g_scene : register (t1);
 Buffer<uint4> g_roVolumes : register (t2);
 
 //--------------------------------------------------------------------------------------
-// Pixel Shader
+// Helper functions
 //--------------------------------------------------------------------------------------
-
-float3 HitObjectPosition(RayQuery<RAY_FLAG_CULL_FRONT_FACING_TRIANGLES> q)
-{
-	return q.CommittedObjectRayOrigin() + q.CommittedRayT() * q.CommittedObjectRayDirection();
-}
-
 uint GetVertId(uint primId, uint i)
 {
 	return primId % 2 ? 3 - i : i;
@@ -61,6 +52,10 @@ float2 GetUV(uint primId, float2 baryc)
 	return uv0 * (1.0 - baryc.x - baryc.y) + uv1 * baryc.x + uv2 * baryc.y;
 }
 
+//--------------------------------------------------------------------------------------
+// Pixel Shader
+//--------------------------------------------------------------------------------------
+[earlydepthstencil]
 float4 main(PSIn input) : SV_TARGET
 {
 	const uint volumeId = input.Ids.x;
@@ -68,21 +63,21 @@ float4 main(PSIn input) : SV_TARGET
 
 	const PerObject perObject = g_roPerObject[volumeId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
-	const float3 rayDir = input.LPt.xyz - localSpaceEyePt;
-	min16float4 dstColor = CubeCast(input.Pos.xy, input.UVW.xyz, input.LPt.xyz, rayDir, uavIdx);
+	const float3 rayDir = input.LPt - localSpaceEyePt;
+	min16float4 dstColor = CubeCast(input.Pos.xy, input.UVW, input.LPt, rayDir, uavIdx);
 
-	RayQuery<RAY_FLAG_CULL_FRONT_FACING_TRIANGLES> q;
 	// Set up a trace. No work is done yet.
 	// Trace the ray.
 	// Set the ray's extents.
 	RayDesc ray;
-	ray.Origin = mul(float4(input.LPt.xyz, 1.0), perObject.World);
+	ray.Origin = mul(float4(input.LPt, 1.0), perObject.World);
 	ray.Direction = normalize(ray.Origin - g_eyePt);
 	// Set TMin to a non-zero small value to avoid aliasing issues due to floating - point errors.
 	// TMin should be kept small to prevent missing geometry at close contact areas.
 	ray.TMin = 0.001;
 	ray.TMax = 1000.0;
 
+	RayQuery<RAY_FLAG_CULL_FRONT_FACING_TRIANGLES> q;
 	for (uint i = 1; i < NUM_OIT_LAYERS; ++i)
 	{
 		q.TraceRayInline(g_scene, RAY_FLAG_NONE, ~0, ray);
@@ -94,8 +89,9 @@ float4 main(PSIn input) : SV_TARGET
 			const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 			const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
-			const float3 pos = HitObjectPosition(q);
+			const float t = q.CommittedRayT();
 			const float3 rayDir = q.CommittedObjectRayDirection();
+			const float3 pos = q.CommittedObjectRayOrigin() + t * rayDir;
 
 			const uint primId = q.CommittedPrimitiveIndex();
 			const uint faceId = primId / 2;
@@ -103,14 +99,10 @@ float4 main(PSIn input) : SV_TARGET
 
 			const min16float4 srcColor = CubeCast(input.Pos.xy, uvw, pos, rayDir, uavIdx);
 			dstColor += srcColor * (1.0 - dstColor.w);
-			ray.TMin = (dstColor.w < ONE_THRESHOLD) ? (q.CommittedRayT() + 0.001) : ray.TMax;
+			ray.TMin = dstColor.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;
 		}
-		else
-		{
-			ray.TMin = ray.TMax;
-		}
+		else ray.TMin = ray.TMax;
 	}
 
 	return dstColor;
 }
-

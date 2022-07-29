@@ -184,8 +184,8 @@ void MultiVolumes::LoadAssets()
 	GeometryBuffer geometry;
 	m_rayCaster = make_unique<MultiRayCaster>();
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
-	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, m_gridSize, m_lightGridSize,
-		m_numVolumes, numVolumeSrcs, m_objectRenderer->GetDepthMaps(), uploaders,
+	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, g_dsFormat,
+		m_gridSize, m_lightGridSize, m_numVolumes, numVolumeSrcs, uploaders,
 		m_isDxrSupported ? &geometry : nullptr)) ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
@@ -276,8 +276,8 @@ void MultiVolumes::CreateResources()
 	}
 	XUSG_N_RETURN(m_objectRenderer->SetViewport(m_device.get(), m_width, m_height,
 		g_rtFormat, g_dsFormat, m_clearColor, true), ThrowIfFailed(E_FAIL));
-	XUSG_N_RETURN(m_rayCaster->SetDepthMaps(m_device.get(), m_objectRenderer->GetDepthMaps(),
-		m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_COLOR)), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_rayCaster->SetRenderTargets(m_device.get(), m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_COLOR),
+		m_objectRenderer->GetDepthMaps()), ThrowIfFailed(E_FAIL));
 }
 
 // Update frame-based values.

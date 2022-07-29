@@ -15,12 +15,11 @@ public:
 	virtual ~MultiRayCaster();
 
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
-		XUSG::Format rtFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
-		const XUSG::DepthStencil::uptr* depths, std::vector<XUSG::Resource::uptr>& uploaders,
-		XUSG::RayTracing::GeometryBuffer* pGeometry);
+		XUSG::Format rtFormat, XUSG::Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes,
+		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders, XUSG::RayTracing::GeometryBuffer* pGeometry);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
-	bool SetDepthMaps(const XUSG::Device* pDevice, const XUSG::DepthStencil::uptr* depths, const XUSG::Texture* pOutView);
+	bool SetRenderTargets(const XUSG::Device* pDevice, const XUSG::RenderTarget* pOutView, const XUSG::DepthStencil::uptr* depths);
 	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const XUSG::Texture* pOutView);
 
 	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
@@ -107,7 +106,7 @@ protected:
 	bool createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createPipelineLayouts(const XUSG::Device* pDevice);
-	bool createPipelines(XUSG::Format rtFormat);
+	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat);
 	bool createCommandLayouts(const XUSG::Device* pDevice);
 	bool createDescriptorTables(const XUSG::Texture* pOutView);
 	bool buildAccelerationStructures(XUSG::RayTracing::CommandList* pCommandList,

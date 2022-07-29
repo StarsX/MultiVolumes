@@ -80,8 +80,8 @@ MultiRayCaster::~MultiRayCaster()
 }
 
 bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
-	Format rtFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
-	const DepthStencil::uptr* depths, vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
+	Format rtFormat, Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
+	vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
 {
 	const auto pDevice = pCommandList->GetRTDevice();
 	m_rayTracingPipelineCache = RayTracing::PipelineCache::MakeUnique(pDevice);
@@ -93,7 +93,6 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 
 	m_gridSize = gridSize;
 	m_lightGridSize = lightGridSize;
-	m_pDepths = depths;
 
 	// Create resources
 	XUSG_N_RETURN(createVolumeInfoBuffers(pCommandList, numVolumes, numVolumeSrcs, uploaders), false);
@@ -119,7 +118,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 		m_cubeDepths[i] = Texture2D::MakeUnique();
 		XUSG_N_RETURN(m_cubeDepths[i]->Create(pDevice, gridSize, gridSize, Format::R32_FLOAT, 6,
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, g_numCubeMips, 1, true, MemoryFlag::NONE,
-			(L"CubeDepth" + to_wstring(i)).c_str()), false);
+			(L"DepthCubeMap" + to_wstring(i)).c_str()), false);
 	}
 
 	m_lightMap = Texture3D::MakeUnique();
@@ -137,7 +136,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 
 	// Create pipelines
 	XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
-	XUSG_N_RETURN(createPipelines(rtFormat), false);
+	XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
 
 	// create command layout
 	XUSG_N_RETURN(createCommandLayouts(pDevice), false);
@@ -205,15 +204,18 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	return true;
 }
 
-bool MultiRayCaster::SetDepthMaps(const XUSG::Device* pDevice, const DepthStencil::uptr* depths, const Texture* pOutView)
+bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderTarget* pOutView, const DepthStencil::uptr* depths)
 {
 	m_pDepths = depths;
 
-	m_depth = DepthStencil::MakeUnique();
-	XUSG_N_RETURN(m_depth->Create(pDevice, static_cast<uint32_t>(depths[DEPTH_MAP]->GetWidth()), depths[DEPTH_MAP]->GetHeight(),
-		Format::D32_FLOAT, ResourceFlag::NONE, 1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"Depth"), false);
+	const auto width = static_cast<uint32_t>(depths[DEPTH_MAP]->GetWidth());
+	const auto height = depths[DEPTH_MAP]->GetHeight();
 
-	return SetViewport(pDevice, static_cast<uint32_t>(depths[DEPTH_MAP]->GetWidth()), depths[DEPTH_MAP]->GetHeight(), pOutView);
+	m_depth = DepthStencil::MakeUnique();
+	XUSG_N_RETURN(m_depth->Create(pDevice, width, height, Format::D32_FLOAT, ResourceFlag::NONE,
+		1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"DepthIncCubes"), false);
+
+	return SetViewport(pDevice, width, height, pOutView);
 }
 
 bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const Texture* pOutView)
@@ -663,6 +665,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	}
 
 	// Cube rendering RT
+	if (m_useRayTracing)
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
@@ -712,7 +715,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	return true;
 }
 
-bool MultiRayCaster::createPipelines(Format rtFormat)
+bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 {
 	auto vsIndex = 0u;
 	auto psIndex = 0u;
@@ -783,9 +786,10 @@ bool MultiRayCaster::createPipelines(Format rtFormat)
 		XUSG_X_RETURN(m_pipelines[CUBE_DEPTH_PEEL], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeDepthPeeling"), false);
 	}
 
+	XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCube.cso"), false);
+
 	// Cube rendering
 	{
-		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCube.cso"), false);
 		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSCube.cso"), false);
 
 		const auto state = Graphics::State::MakeUnique();
@@ -795,27 +799,24 @@ bool MultiRayCaster::createPipelines(Format rtFormat)
 		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
 		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
 		state->DSSetState(Graphics::DEPTH_STENCIL_NONE, m_graphicsPipelineCache.get());
-		//state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
-		//state->OMSetRTVFormats(&rtFormat, 1);
 		XUSG_X_RETURN(m_pipelines[RENDER_CUBE], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeRendering"), false);
 	}
 
-
 	// Cube rendering RT
+	if (m_useRayTracing)
 	{
-		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, vsIndex, L"VSCube.cso"), false);
 		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSCubeRT.cso"), false);
 
 		const auto state = Graphics::State::MakeUnique();
 		state->SetPipelineLayout(m_pipelineLayouts[RENDER_CUBE_RT]);
-		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, vsIndex++));
+		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, vsIndex - 1));
 		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, psIndex++));
 		state->IASetPrimitiveTopologyType(PrimitiveTopologyType::TRIANGLE);
 		state->RSSetState(Graphics::CULL_FRONT, m_graphicsPipelineCache.get()); // Front-face culling for interior surfaces
 		state->DSSetState(Graphics::DEFAULT_LESS, m_graphicsPipelineCache.get());
 		state->OMSetBlendState(Graphics::PREMULTIPLITED, m_graphicsPipelineCache.get());
 		state->OMSetRTVFormats(&rtFormat, 1);
-		state->OMSetDSVFormat(Format::D32_FLOAT);
+		state->OMSetDSVFormat(dsFormat);
 		XUSG_X_RETURN(m_pipelines[RENDER_CUBE_RT], state->GetPipeline(m_graphicsPipelineCache.get(), L"CubeRenderingRT"), false);
 	}
 
@@ -1164,7 +1165,7 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE |
-		ResourceState::PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE, numBarriers);
+		ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1263,25 +1264,21 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
-void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pOutView)
+void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, RenderTarget* pOutView)
 {
 	// Set barriers
-	vector<ResourceBarrier> barriers(1);
-	auto numBarriers = m_depth->SetBarrier(barriers.data(), ResourceState::COPY_DEST);
-	pCommandList->Barrier(numBarriers, barriers.data());
-	pCommandList->CopyResource(m_depth.get(), m_pDepths[DEPTH_MAP].get());
-
-	barriers.resize(m_cubeMaps.size() + m_cubeDepths.size() + 2);
-	numBarriers = m_depth->SetBarrier(barriers.data(), ResourceState::DEPTH_WRITE);
-	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT, numBarriers);
+	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
+	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
-	const Descriptor pRTVs[] = { pOutView->GetRTV() };
-	pCommandList->OMSetRenderTargets(static_cast<uint32_t>(size(pRTVs)), pRTVs, &m_depth->GetDSV());
+	// Set render target
+	const auto& pDSV = m_depth->GetDSV();
+	pCommandList->ClearDepthStencilView(pDSV, ClearFlag::DEPTH, 1.0f);
+	pCommandList->OMSetRenderTargets(1, &pOutView->GetRTV(), &pDSV);
 
 	// Set pipeline state
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[RENDER_CUBE_RT]);
@@ -1328,9 +1325,9 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
 	auto numBarriers = pOutView->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	for (auto& cubeMap : m_cubeMaps)
-		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
+		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
-		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
+		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Set pipeline state
