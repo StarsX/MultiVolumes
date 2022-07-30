@@ -34,7 +34,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_isPaused(false),
 	m_tracking(false),
 	m_gridSize(128),
-	m_lightGridSize(256),
+	m_lightGridSize(512),
 	m_maxRaySamples(256),
 	m_maxLightSamples(128),
 	m_numVolumes(2),
@@ -43,7 +43,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_meshFileName("Assets/bunny.obj"),
 	m_volPosScale(0.0f, 0.0f, 0.0f, 10.0f),
 	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f),
-	m_lightMapScale(40.0f)
+	m_lightMapScale(32.0f)
 {
 #if defined (_DEBUG)
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -252,7 +252,7 @@ void MultiVolumes::CreateSwapchain()
 {
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
-	XUSG_N_RETURN(m_swapChain->Create(m_factory.get(), Win32Application::GetHwnd(), m_commandQueue.get(),
+	XUSG_N_RETURN(m_swapChain->Create(m_factory.get(), Win32Application::GetHwnd(), m_commandQueue->GetHandle(),
 		FrameCount, m_width, m_height, g_backFormat, SwapChainFlag::ALLOW_TEARING), ThrowIfFailed(E_FAIL));
 
 	// This class does not support exclusive full-screen mode and prevents DXGI from responding to the ALT+ENTER shortcut.
