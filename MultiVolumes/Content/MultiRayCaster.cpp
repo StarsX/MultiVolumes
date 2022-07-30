@@ -363,7 +363,7 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frame
 	cullVolumes(pCommandList, frameIndex);
 	rayMarchV(pCommandList, frameIndex);
 #if 0
-	if (m_useRayTracing) traceCube(pCommandList, frameIndex, pOutView);
+	if (m_useRayTracing) traceCube(pCommandList, frameIndex, pColorOut);
 #else
 	if (m_useRayTracing)
 	{

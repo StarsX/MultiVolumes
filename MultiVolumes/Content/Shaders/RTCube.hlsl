@@ -7,6 +7,7 @@
 #include "PSCube.hlsli"
 
 #define ONE_THRESHOLD 0.99
+#define T_MAX 1000.0
 
 typedef RaytracingAccelerationStructure RaytracingAS;
 typedef BuiltInTriangleIntersectionAttributes Attributes;
@@ -136,4 +137,5 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 [shader("miss")]
 void missMain(inout RayPayload payload)
 {
+	payload.T = T_MAX;
 }

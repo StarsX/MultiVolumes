@@ -20,5 +20,7 @@ float4 main(float4 Pos : SV_POSITION) : SV_TARGET
 		result += min16float4(src) * (1.0 - result.w);
 	}
 
+	result.w = min(result.w, 0.9997); // Keep transparent for transparent object detections in TAA
+
 	return result;
 }

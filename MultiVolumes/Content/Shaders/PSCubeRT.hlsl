@@ -7,6 +7,7 @@
 #include "PSCube.hlsli"
 
 #define ONE_THRESHOLD 0.99
+#define T_MAX 1000.0
 
 typedef RaytracingAccelerationStructure RaytracingAS;
 
@@ -64,7 +65,7 @@ float4 main(PSIn input) : SV_TARGET
 	const PerObject perObject = g_roPerObject[volumeId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt - localSpaceEyePt;
-	min16float4 dstColor = CubeCast(input.Pos.xy, input.UVW, input.LPt, rayDir, uavIdx);
+	min16float4 dst = CubeCast(input.Pos.xy, input.UVW, input.LPt, rayDir, uavIdx);
 
 	// Set up a trace. No work is done yet.
 	// Trace the ray.
@@ -75,7 +76,7 @@ float4 main(PSIn input) : SV_TARGET
 	// Set TMin to a non-zero small value to avoid aliasing issues due to floating - point errors.
 	// TMin should be kept small to prevent missing geometry at close contact areas.
 	ray.TMin = 0.001;
-	ray.TMax = 1000.0;
+	ray.TMax = T_MAX;
 
 	RayQuery<RAY_FLAG_CULL_FRONT_FACING_TRIANGLES> q;
 	for (uint i = 1; i < NUM_OIT_LAYERS; ++i)
@@ -97,12 +98,14 @@ float4 main(PSIn input) : SV_TARGET
 			const uint faceId = primId / 2;
 			const float3 uvw = float3(GetUV(primId, q.CommittedTriangleBarycentrics()), faceId);
 
-			const min16float4 srcColor = CubeCast(input.Pos.xy, uvw, pos, rayDir, uavIdx);
-			dstColor += srcColor * (1.0 - dstColor.w);
-			ray.TMin = dstColor.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;
+			const min16float4 src = CubeCast(input.Pos.xy, uvw, pos, rayDir, uavIdx);
+			dst += src * (1.0 - dst.w);
+			ray.TMin = dst.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;
 		}
 		else ray.TMin = ray.TMax;
 	}
 
-	return dstColor;
+	dst.w = min(dst.w, 0.9997); // Keep transparent for transparent object detections in TAA
+
+	return dst;
 }
