@@ -58,7 +58,7 @@ private:
 	XUSG::CommandAllocator::uptr	m_commandAllocators[FrameCount];
 	XUSG::CommandQueue::uptr		m_commandQueue;
 
-	bool m_isDxrSupported;
+	uint8_t m_dxrSupport;
 
 	XUSG::RayTracing::Device::uptr	m_device;
 	XUSG::RenderTarget::uptr		m_renderTargets[FrameCount];
@@ -80,6 +80,7 @@ private:
 	uint64_t	m_fenceValues[FrameCount];
 
 	// Application state
+	MultiRayCaster::OITMethod m_oitMethod;
 	bool		m_animate;
 	bool		m_showMesh;
 	bool		m_showFPS;

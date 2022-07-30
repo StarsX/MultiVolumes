@@ -28,6 +28,7 @@ static auto g_updateLight = true;
 MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
+	m_oitMethod(MultiRayCaster::OIT_RAY_QUERY),
 	m_animate(false),
 	m_showMesh(false),
 	m_showFPS(true),
@@ -123,6 +124,9 @@ void MultiVolumes::LoadPipeline()
 		m_title += dxgiAdapterDesc.VendorId == 0x1414 && dxgiAdapterDesc.DeviceId == 0x8c ? L" (WARP)" : L" (Software)";
 	ThrowIfFailed(hr);
 
+	m_oitMethod = (m_dxrSupport & MultiRayCaster::RT_INLINE) ? MultiRayCaster::OIT_RAY_QUERY :
+		((m_dxrSupport & MultiRayCaster::RT_PIPELINE) ? MultiRayCaster::OIT_RAY_TRACING : MultiRayCaster::OIT_K_BUFFER);
+
 	// Create the command queue.
 	m_commandQueue = CommandQueue::MakeUnique();
 	XUSG_N_RETURN(m_commandQueue->Create(m_device.get(), CommandListType::DIRECT, CommandQueueFlag::NONE,
@@ -186,7 +190,7 @@ void MultiVolumes::LoadAssets()
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, g_dsFormat,
 		m_gridSize, m_lightGridSize, m_numVolumes, numVolumeSrcs, uploaders,
-		m_isDxrSupported ? &geometry : nullptr)) ThrowIfFailed(E_FAIL);
+		&geometry, m_dxrSupport)) ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
@@ -430,6 +434,13 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		m_showMesh = !m_showMesh;
 		g_updateLight = true;
 		break;
+	case 'O':
+		m_oitMethod = static_cast<MultiRayCaster::OITMethod>((m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT);
+		m_oitMethod = m_oitMethod == MultiRayCaster::OIT_RAY_QUERY &&
+			!(m_dxrSupport & MultiRayCaster::RT_INLINE) ? MultiRayCaster::OIT_RAY_TRACING : m_oitMethod;
+		m_oitMethod = m_oitMethod == MultiRayCaster::OIT_RAY_TRACING &&
+			!(m_dxrSupport & MultiRayCaster::RT_PIPELINE) ? MultiRayCaster::OIT_K_BUFFER : m_oitMethod;
+		break;
 	}
 }
 
@@ -625,7 +636,7 @@ void MultiVolumes::PopulateCommandList()
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
 	if (m_lightProbe) m_lightProbe->RenderEnvironment(pCommandList, m_frameIndex);
-	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, g_updateLight);
+	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, g_updateLight, m_oitMethod);
 	g_updateLight = false;
 
 	m_objectRenderer->Postprocess(pCommandList, m_renderTargets[m_frameIndex].get());
@@ -695,7 +706,21 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 		if (m_showFPS) windowText << setprecision(2) << fixed << fps;
 		else windowText << L"[F1]";
 
+		windowText << L"    [A] " << (m_animate ? "Auto-animation" : "Interaction");
 		windowText << L"    [M] Show/hide mesh";
+
+		windowText << L"    [O] ";
+		switch (m_oitMethod)
+		{
+		case MultiRayCaster::OIT_RAY_TRACING:
+			windowText << L"Ray-traced OIT";
+			break;
+		case MultiRayCaster::OIT_RAY_QUERY:
+			windowText << L"Hybrid ray-traced OIT (ray query)";
+			break;
+		default:
+			windowText << L"K-buffer OIT";
+		}
 
 		SetCustomWindowText(windowText.str().c_str());
 	}
@@ -723,14 +748,20 @@ inline bool EnableComputeRaytracingFallback(IDXGIAdapter1* adapter)
 }
 
 // Returns bool whether the device supports DirectX Raytracing tier.
-inline bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
+inline uint8_t GetDirectXRaytracingSupportLevel(IDXGIAdapter1* adapter)
 {
 	ComPtr<ID3D12Device> testDevice;
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureSupportData = {};
 
-	return SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)))
-		&& SUCCEEDED(testDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData)))
-		&& featureSupportData.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
+	uint8_t dxrSupport = 0;
+	if (SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)))
+		&& SUCCEEDED(testDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData))))
+	{
+		dxrSupport |= featureSupportData.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0 ? MultiRayCaster::RT_PIPELINE : 0;
+		dxrSupport |= featureSupportData.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1 ? MultiRayCaster::RT_INLINE : 0;
+	}
+
+	return dxrSupport;
 }
 
 void MultiVolumes::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
@@ -745,9 +776,9 @@ void MultiVolumes::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
 			L"         Possible reasons: your OS is not in developer mode.\n\n");
 	}
 
-	m_isDxrSupported = IsDirectXRaytracingSupported(adapter);
+	m_dxrSupport = GetDirectXRaytracingSupportLevel(adapter);
 
-	if (!m_isDxrSupported)
+	if (!m_dxrSupport)
 	{
 		OutputDebugString(L"Warning: DirectX Raytracing is not supported by your GPU and driver.\n\n");
 

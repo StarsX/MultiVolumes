@@ -11,12 +11,28 @@
 class MultiRayCaster
 {
 public:
+	enum RTSupport : uint8_t
+	{
+		RT_PIPELINE	= (1 << 0),
+		RT_INLINE	= (1 << 1)
+	};
+
+	enum OITMethod : uint8_t
+	{
+		OIT_K_BUFFER,
+		OIT_RAY_TRACING,
+		OIT_RAY_QUERY,
+
+		OIT_METHOD_COUNT
+	};
+
 	MultiRayCaster();
 	virtual ~MultiRayCaster();
 
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
 		XUSG::Format rtFormat, XUSG::Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes,
-		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders, XUSG::RayTracing::GeometryBuffer* pGeometry);
+		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders, XUSG::RayTracing::GeometryBuffer* pGeometry,
+		uint8_t rtSupport);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool SetRenderTargets(const XUSG::Device* pDevice, const XUSG::RenderTarget* pColorOut, const XUSG::DepthStencil::uptr* depths);
@@ -30,8 +46,10 @@ public:
 	void SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos);
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
-	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
-	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut, bool updateLight);
+	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj,
+		const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
+	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex,
+		XUSG::RenderTarget* pColorOut, bool updateLight, OITMethod oitMethod = OIT_K_BUFFER);
 	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const XUSG::DescriptorTable& GetLightSRVTable() const;
@@ -193,5 +211,5 @@ protected:
 
 	DirectX::XMUINT2		m_viewport;
 
-	bool m_useRayTracing;
+	uint8_t m_rtSupport;
 };

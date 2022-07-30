@@ -66,7 +66,7 @@ MultiRayCaster::MultiRayCaster() :
 	m_lightPt(75.0f, 75.0f, -75.0f),
 	m_lightColor(1.0f, 0.7f, 0.3f, 1.0f),
 	m_ambient(0.0f, 0.3f, 1.0f, 0.4f),
-	m_useRayTracing(false)
+	m_rtSupport(0)
 {
 	m_shaderPool = ShaderPool::MakeUnique();
 
@@ -81,7 +81,7 @@ MultiRayCaster::~MultiRayCaster()
 
 bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
 	Format rtFormat, Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes, uint32_t numVolumeSrcs,
-	vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry)
+	vector<Resource::uptr>& uploaders, RayTracing::GeometryBuffer* pGeometry, uint8_t rtSupport)
 {
 	const auto pDevice = pCommandList->GetRTDevice();
 	m_rayTracingPipelineCache = RayTracing::PipelineCache::MakeUnique(pDevice);
@@ -89,7 +89,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	m_computePipelineCache = Compute::PipelineCache::MakeUnique(pDevice);
 	m_pipelineLayoutCache = PipelineLayoutCache::MakeUnique(pDevice);
 	m_descriptorTableCache = descriptorTableCache;
-	m_useRayTracing = pGeometry ? true : false;
+	m_rtSupport = rtSupport;
 
 	m_gridSize = gridSize;
 	m_lightGridSize = lightGridSize;
@@ -149,7 +149,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	SetVolumesWorld(20.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 
 	// Build acceleration structures
-	if (m_useRayTracing)
+	if (m_rtSupport)
 	{
 		XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
 		//XUSG_N_RETURN(createDescriptorTables(nullptr), false); // included in buildAccelerationStructures()
@@ -314,7 +314,8 @@ void MultiRayCaster::SetAmbient(const XMFLOAT3& color, float intensity)
 	m_ambient = XMFLOAT4(color.x, color.y, color.z, intensity);
 }
 
-void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT4X4& shadowVP, const XMFLOAT3& eyePt)
+void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj,
+	const XMFLOAT4X4& shadowVP, const XMFLOAT3& eyePt)
 {
 	const auto& depth = m_pDepths[DEPTH_MAP];
 	const auto width = static_cast<float>(depth->GetWidth());
@@ -357,22 +358,23 @@ void MultiRayCaster::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const X
 	}
 }
 
-void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut, bool updateLight)
+void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frameIndex,
+	RenderTarget* pColorOut, bool updateLight, OITMethod oitMethod)
 {
 	if (updateLight) RayMarchL(pCommandList, frameIndex);
 	cullVolumes(pCommandList, frameIndex);
 	rayMarchV(pCommandList, frameIndex);
-#if 0
-	if (m_useRayTracing) traceCube(pCommandList, frameIndex, pColorOut);
-#else
-	if (m_useRayTracing)
+
+	switch (oitMethod)
 	{
+	case OIT_RAY_TRACING:
+		traceCube(pCommandList, frameIndex, pColorOut);
+		break;
+	case OIT_RAY_QUERY:
 		renderDepth(pCommandList, frameIndex);
 		renderCubeRT(pCommandList, frameIndex, pColorOut);
-	}
-#endif
-	else
-	{
+		break;
+	default:
 		cubeDepthPeel(pCommandList, frameIndex);
 		renderCube(pCommandList, frameIndex);
 		resolveOIT(pCommandList, frameIndex);
@@ -649,7 +651,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	}
 
 	// Depth prepass
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_INLINE)
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
@@ -685,7 +687,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	}
 
 	// Cube rendering RT
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_INLINE)
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
@@ -717,7 +719,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	}
 
 	// Ray Tracing
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_PIPELINE)
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootSRV(0, 0, 0, DescriptorFlag::DATA_STATIC);
@@ -808,7 +810,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	}
 
 	// Depth prepass
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_INLINE)
 	{
 		const auto state = Graphics::State::MakeUnique();
 		state->SetPipelineLayout(m_pipelineLayouts[DEPTH_PASS]);
@@ -837,7 +839,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	}
 
 	// Cube rendering RT
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_INLINE)
 	{
 		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, psIndex, L"PSCubeRT.cso"), false);
 
@@ -871,7 +873,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	}
 
 	// Ray Tracing
-	if (m_useRayTracing)
+	if (m_rtSupport & RT_PIPELINE)
 	{
 		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::CS, csIndex, L"RTCube.cso"), false);
 
