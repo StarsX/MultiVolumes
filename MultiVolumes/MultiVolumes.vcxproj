@@ -294,6 +294,8 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
       </EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </EntryPointName>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/auto-binding-space 0</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/auto-binding-space 0</AdditionalOptions>
     </FxCompile>
     <FxCompile Include="Content\Shaders\VSBasePass.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>

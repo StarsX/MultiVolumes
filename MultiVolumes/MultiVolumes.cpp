@@ -435,11 +435,11 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		g_updateLight = true;
 		break;
 	case 'O':
-		m_oitMethod = static_cast<MultiRayCaster::OITMethod>((m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT);
-		m_oitMethod = m_oitMethod == MultiRayCaster::OIT_RAY_QUERY &&
-			!(m_dxrSupport & MultiRayCaster::RT_INLINE) ? MultiRayCaster::OIT_RAY_TRACING : m_oitMethod;
-		m_oitMethod = m_oitMethod == MultiRayCaster::OIT_RAY_TRACING &&
-			!(m_dxrSupport & MultiRayCaster::RT_PIPELINE) ? MultiRayCaster::OIT_K_BUFFER : m_oitMethod;
+		auto inc = (m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT == MultiRayCaster::OIT_RAY_QUERY &&
+			!(m_dxrSupport & MultiRayCaster::RT_INLINE) ? 2 : 1;
+		inc = (m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT == MultiRayCaster::OIT_RAY_TRACING &&
+			!(m_dxrSupport & MultiRayCaster::RT_PIPELINE) ? 0 : inc;
+		m_oitMethod = static_cast<MultiRayCaster::OITMethod>((m_oitMethod + inc) % MultiRayCaster::OIT_METHOD_COUNT);
 		break;
 	}
 }

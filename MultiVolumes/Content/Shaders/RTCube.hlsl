@@ -17,26 +17,17 @@ typedef BuiltInTriangleIntersectionAttributes Attributes;
 //--------------------------------------------------------------------------------------
 struct RayPayload
 {
-	min16float4 Color;
+	float4 Color;
 	float T;
-};
-
-struct GlobalCB
-{
-	float3 EyePt;
-	float2 Viewport;
-	float4x4 ScreenToWorld;
 };
 
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-ConstantBuffer<GlobalCB> g_cb : register (b0);
-
 RaytracingAS g_scene : register (t0);
 Buffer<uint4> g_roVolumes : register (t1);
 
-RWTexture2D<float4> g_renderTarget : register (u0);
+RWTexture2D<float4> g_renderTarget;
 
 // Retrieve hit object position.
 float3 HitObjectPosition()
@@ -76,10 +67,10 @@ inline void GenerateCameraRay(uint2 index, out float3 origin, out float3 directi
 	screenPos.y = -screenPos.y;
 
 	// Unproject the pixel coordinate into a ray.
-	float4 world = mul(float4(screenPos, 0.0, 1.0), g_cb.ScreenToWorld);
+	float4 world = mul(float4(screenPos, 0.0, 1.0), g_screenToWorld);
 
 	world.xyz /= world.w;
-	origin = g_cb.EyePt;
+	origin = g_eyePt;
 	direction = normalize(world.xyz - origin);
 }
 
@@ -90,14 +81,11 @@ void raygenMain()
 	const float4 bgColor = g_renderTarget[index];
 
 	// Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
-	float3 rayDir, origin;
-	GenerateCameraRay(index, origin, rayDir);
+	RayDesc ray;
+	GenerateCameraRay(index, ray.Origin, ray.Direction);
 
 	// Trace the ray.
 	// Set the ray's extents.
-	RayDesc ray;
-	ray.Origin = origin;
-	ray.Direction = rayDir;
 	// Set TMin to a non-zero small value to avoid aliasing issues due to floating - point errors.
 	// TMin should be kept small to prevent missing geometry at close contact areas.
 	ray.TMin = 0.001;
@@ -111,7 +99,7 @@ void raygenMain()
 	}
 
 	// Write the raytraced color to the output texture.
-	g_renderTarget[index] = payload.Color + min16float4(bgColor) * (1.0 - payload.Color.w);
+	g_renderTarget[index] = payload.Color + bgColor * (1.0 - payload.Color.w);
 }
 
 [shader("closesthit")]
@@ -119,7 +107,7 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 {
 	const uint volumeId = InstanceIndex();
 	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+	const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
 	const float3 pos = HitObjectPosition();
 	const float3 rayDir = ObjectRayDirection();
@@ -128,7 +116,7 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 	const uint faceId = primId / 2;
 	const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
 
-	const min16float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, uavIdx);
+	const min16float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, srvIdx);
 
 	payload.Color += color * (1.0 - payload.Color.w);
 	payload.T = RayTCurrent() + 0.001;

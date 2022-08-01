@@ -23,18 +23,15 @@ Texture2DArray<uint>		g_txKDepths : register (t1);
 //--------------------------------------------------------------------------------------
 // Pixel Shader
 //--------------------------------------------------------------------------------------
-void main(PSIn input)// : SV_TARGET
+void main(PSIn input)
 {
 	const uint volumeId = input.Ids.x;
-	const uint uavIdx = input.Ids.y;
+	const uint srvIdx = input.Ids.y;
 
 	const PerObject perObject = g_roPerObject[volumeId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
-	const float3 rayDir = input.LPt.xyz - localSpaceEyePt;
+	const float3 rayDir = input.LPt - localSpaceEyePt;
 
-#if 0
-	return CubeCast(input.Pos.xy, input.UVW.xyz, input.LPt.xyz, rayDir, uavIdx);
-#else
 	const uint2 uv = input.Pos.xy;
 	const uint depth = asuint(input.Pos.z);
 
@@ -44,9 +41,8 @@ void main(PSIn input)// : SV_TARGET
 
 		if (g_txKDepths[uvw] == depth)
 		{
-			const min16float4 color = CubeCast(input.Pos.xy, input.UVW.xyz, input.LPt.xyz, rayDir, uavIdx);
+			const min16float4 color = CubeCast(uv, input.UVW, input.LPt, rayDir, srvIdx);
 			if (color.w > 0.0 && color.w <= 1.0) g_rwKColors[uvw] = color;
 		}
 	}
-#endif
 }

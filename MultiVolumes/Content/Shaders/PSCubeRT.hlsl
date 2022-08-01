@@ -60,12 +60,13 @@ float2 GetUV(uint primId, float2 baryc)
 float4 main(PSIn input) : SV_TARGET
 {
 	const uint volumeId = input.Ids.x;
-	const uint uavIdx = input.Ids.y;
+	const uint srvIdx = input.Ids.y;
+	const uint2 index = input.Pos.xy;
 
 	const PerObject perObject = g_roPerObject[volumeId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt - localSpaceEyePt;
-	min16float4 dst = CubeCast(input.Pos.xy, input.UVW, input.LPt, rayDir, uavIdx);
+	min16float4 dst = CubeCast(index, input.UVW, input.LPt, rayDir, srvIdx);
 
 	// Set up a trace. No work is done yet.
 	// Trace the ray.
@@ -88,7 +89,7 @@ float4 main(PSIn input) : SV_TARGET
 		{
 			const uint volumeId = q.CommittedInstanceIndex();
 			const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-			const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+			const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
 			const float t = q.CommittedRayT();
 			const float3 rayDir = q.CommittedObjectRayDirection();
@@ -98,7 +99,7 @@ float4 main(PSIn input) : SV_TARGET
 			const uint faceId = primId / 2;
 			const float3 uvw = float3(GetUV(primId, q.CommittedTriangleBarycentrics()), faceId);
 
-			const min16float4 src = CubeCast(input.Pos.xy, uvw, pos, rayDir, uavIdx);
+			const min16float4 src = CubeCast(index, uvw, pos, rayDir, srvIdx);
 			dst += src * (1.0 - dst.w);
 			ray.TMin = dst.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;
 		}

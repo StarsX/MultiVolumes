@@ -56,7 +56,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	const PerObject perObject = g_roPerObject[volumeId];
 
-	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+	const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
 	const float2 uv = float2(vertId & 1, vertId >> 1);
 	const float2 pos2D = uv * 2.0 - 1.0;
@@ -67,7 +67,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	output.UVW = float3(1.0 - uv.x, uv.y, faceId); // Exterior UV to interior UV
 	output.LPt = pos;
 	output.Ids.x = volumeId;
-	output.Ids.y = uavIdx;
+	output.Ids.y = srvIdx;
 
 	return output;
 }
