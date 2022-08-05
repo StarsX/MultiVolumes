@@ -13,7 +13,9 @@ struct VSOut
 	float4 Pos	: SV_POSITION;
 	float3 UVW	: TEXCOORD;
 	float3 LPt	: POSLOCAL;
-	uint2 Ids	: INDICES;
+	uint VolId	: VOLUMEID;
+	uint SrvId	: SRVINDEX;
+	bool CubeRM : SCHEME;
 };
 
 //--------------------------------------------------------------------------------------
@@ -56,8 +58,6 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	const PerObject perObject = g_roPerObject[volumeId];
 
-	const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
-
 	const float2 uv = float2(vertId & 1, vertId >> 1);
 	const float2 pos2D = uv * 2.0 - 1.0;
 	float3 pos = float3(pos2D.x, -pos2D.y, 1.0);
@@ -66,8 +66,9 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	output.Pos = mul(float4(pos, 1.0), perObject.WorldViewProj);
 	output.UVW = float3(1.0 - uv.x, uv.y, faceId); // Exterior UV to interior UV
 	output.LPt = pos;
-	output.Ids.x = volumeId;
-	output.Ids.y = srvIdx;
+	output.VolId = volumeId;
+	output.SrvId = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+	output.CubeRM = volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT;
 
 	return output;
 }

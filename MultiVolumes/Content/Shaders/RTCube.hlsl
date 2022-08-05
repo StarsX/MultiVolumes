@@ -116,7 +116,14 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 	const uint faceId = primId / 2;
 	const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
 
-	const min16float4 color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, srvIdx);
+	min16float4 color;
+#if _ADAPTIVE_RAYMARCH_
+	if (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)
+#endif
+		color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, srvIdx);
+#if _ADAPTIVE_RAYMARCH_
+	else color = 0.0; // color = RayCast(); TODO: screen-space ray marching
+#endif
 
 	payload.Color += color * (1.0 - payload.Color.w);
 	payload.T = RayTCurrent() + 0.001;

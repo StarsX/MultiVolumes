@@ -19,7 +19,9 @@ struct PSIn
 	float4 Pos	: SV_POSITION;
 	float3 UVW	: TEXCOORD;
 	float3 LPt	: POSLOCAL;
-	uint2 Ids	: INDICES;
+	uint VolId	: VOLUMEID;
+	uint SrvId	: SRVINDEX;
+	bool CubeRM : SCHEME;
 };
 
 //--------------------------------------------------------------------------------------
@@ -59,14 +61,19 @@ float2 GetUV(uint primId, float2 baryc)
 [earlydepthstencil]
 float4 main(PSIn input) : SV_TARGET
 {
-	const uint volumeId = input.Ids.x;
-	const uint srvIdx = input.Ids.y;
 	const uint2 index = input.Pos.xy;
-
-	const PerObject perObject = g_roPerObject[volumeId];
+	const PerObject perObject = g_roPerObject[input.VolId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt - localSpaceEyePt;
-	min16float4 dst = CubeCast(index, input.UVW, input.LPt, rayDir, srvIdx);
+
+	min16float4 dst;
+#if _ADAPTIVE_RAYMARCH_
+	if (input.CubeRM)
+#endif
+		dst = CubeCast(index, input.UVW, input.LPt, rayDir, input.SrvId);
+#if _ADAPTIVE_RAYMARCH_
+	else dst = 0.0; // dst = RayCast(); TODO: screen-space ray marching
+#endif
 
 	// Set up a trace. No work is done yet.
 	// Trace the ray.
@@ -99,7 +106,15 @@ float4 main(PSIn input) : SV_TARGET
 			const uint faceId = primId / 2;
 			const float3 uvw = float3(GetUV(primId, q.CommittedTriangleBarycentrics()), faceId);
 
-			const min16float4 src = CubeCast(index, uvw, pos, rayDir, srvIdx);
+			min16float4 src;
+#if _ADAPTIVE_RAYMARCH_
+			if (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)
+#endif
+				src = CubeCast(index, uvw, pos, rayDir, srvIdx);
+#if _ADAPTIVE_RAYMARCH_
+			else src = 0.0; // src = RayCast(); TODO: screen-space ray marching
+#endif
+
 			dst += src * (1.0 - dst.w);
 			ray.TMin = dst.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;
 		}

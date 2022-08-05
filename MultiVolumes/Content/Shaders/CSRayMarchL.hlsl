@@ -45,7 +45,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	bool hasDensity = false;
 	float3 uvw = 0.0;
 	PerObject perObject;
-	uint volTexId;
+	uint volTexId = 0;
 	for (uint n = 0; n < structInfo.x; ++n)
 	{
 		perObject = g_roPerObject[n];

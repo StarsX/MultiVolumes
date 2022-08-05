@@ -14,7 +14,9 @@ struct PSIn
 	float4 Pos	: SV_POSITION;
 	float3 UVW	: TEXCOORD;
 	float3 LPt	: POSLOCAL;
-	uint2 Ids	: INDICES;
+	uint VolId	: VOLUMEID;
+	uint SrvId	: SRVINDEX;
+	bool CubeRM : SCHEME;
 };
 
 RWTexture2DArray<float4>	g_rwKColors;
@@ -25,10 +27,7 @@ Texture2DArray<uint>		g_txKDepths : register (t1);
 //--------------------------------------------------------------------------------------
 void main(PSIn input)
 {
-	const uint volumeId = input.Ids.x;
-	const uint srvIdx = input.Ids.y;
-
-	const PerObject perObject = g_roPerObject[volumeId];
+	const PerObject perObject = g_roPerObject[input.VolId];
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt - localSpaceEyePt;
 
@@ -41,7 +40,14 @@ void main(PSIn input)
 
 		if (g_txKDepths[uvw] == depth)
 		{
-			const min16float4 color = CubeCast(uv, input.UVW, input.LPt, rayDir, srvIdx);
+			min16float4 color;
+#if _ADAPTIVE_RAYMARCH_
+			if (input.CubeRM)
+#endif
+				color = CubeCast(uv, input.UVW, input.LPt, rayDir, input.SrvId);
+#if _ADAPTIVE_RAYMARCH_
+			else color = 0.0; // color = RayCast(); TODO: screen-space ray marching
+#endif
 			if (color.w > 0.0 && color.w <= 1.0) g_rwKColors[uvw] = color;
 		}
 	}

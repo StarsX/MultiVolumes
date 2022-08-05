@@ -79,9 +79,12 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 {
 	uint volumeId = g_roVisibleVolumes[Gid.z];
 	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-	volumeInfo.FaceMask = WaveReadLaneFirst(volumeInfo.FaceMask);
+	volumeInfo.MaskBits = WaveReadLaneFirst(volumeInfo.MaskBits);
 
-	if ((volumeInfo.FaceMask & (1 << GTid.z)) == 0) return;
+#if _ADAPTIVE_RAYMARCH_
+	if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)) return;
+#endif
+	if ((volumeInfo.MaskBits & (1 << GTid.z)) == 0) return;
 
 	//volumeId = WaveReadLaneFirst(volumeId);
 	const PerObject perObject = g_roPerObject[volumeId];

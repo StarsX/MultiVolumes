@@ -20,6 +20,8 @@ StructuredBuffer<VolumeIn>	g_roVolumes;
 AppendStructuredBuffer<uint> g_rwVisibleVolumes;
 RWBuffer<uint4> g_rwVolumes;
 
+static const uint g_waveVolumeCount = WaveGetLaneCount() / 8;
+
 //--------------------------------------------------------------------------------------
 // Project to viewport space
 //--------------------------------------------------------------------------------------
@@ -32,10 +34,10 @@ float4 ProjectToViewport(uint i, float4x4 worldViewProj, float2 viewport)
 		float4(1.0, -1.0, 1.0, 1.0),
 		float4(-1.0, -1.0, 1.0, 1.0),
 
-		float4(-1.0f, 1.0f, -1.0f, 1.0f),
-		float4(1.0f, 1.0f, -1.0f, 1.0f),
-		float4(-1.0f, -1.0f, -1.0f, 1.0f),
-		float4(1.0f, -1.0f, -1.0f, 1.0f),
+		float4(-1.0, 1.0, -1.0, 1.0),
+		float4(1.0, 1.0, -1.0, 1.0),
+		float4(-1.0, -1.0, -1.0, 1.0),
+		float4(1.0, -1.0, -1.0, 1.0),
 	};
 
 	float4 p = mul(v[i], worldViewProj);
@@ -44,103 +46,6 @@ float4 ProjectToViewport(uint i, float4x4 worldViewProj, float2 viewport)
 	p.y = 1.0 - p.y;
 
 	return float4(p.xy * viewport, p.zw);
-}
-
-float CalcTriangleArea(float2 edge1, float2 edge2)
-{
-	return 0.5 * abs(determinant(float2x2(edge1, edge2)));
-}
-
-float CalcQuadArea(float2 edges[4])
-{
-	return CalcTriangleArea(edges[0], edges[1])
-		+ CalcTriangleArea(edges[2], edges[3]);
-}
-
-float EstimateCubeEdgePixelSize(float2 v, uint edgeId, uint baseLaneId)
-{
-	static const uint ei[][2] =
-	{
-		{ 0, 1 },
-		{ 3, 2 },
-
-		{ 1, 3 },
-		{ 2, 0 },
-
-		{ 4, 5 },
-		{ 7, 6 },
-
-		{ 5, 7 },
-		{ 6, 4 },
-
-		{ 1, 4 },
-		{ 6, 3 },
-
-		{ 5, 0 },
-		{ 2, 7 }
-	};
-
-	const uint i = edgeId;
-	const float2 v0 = WaveReadLaneAt(v, baseLaneId + ei[i][0]);
-	const float2 v1 = WaveReadLaneAt(v, baseLaneId + ei[i][1]);
-
-	return length(v1 - v0);
-}
-
-void EstimateCubeAttributes(float2 v, uint2 wTid, out float maxEdgeLength, out float projCoverage)
-{
-	static const uint waveVolumeCount = WaveGetLaneCount() / 8;
-
-	maxEdgeLength = 0.0;
-
-	// Per edge processing
-	if (wTid.x < 6)
-	{
-		const uint baseEdgeId = 2 * wTid.x;
-		const uint baseLaneId = 8 * wTid.y;
-		float2 s;
-
-		[unroll]
-		for (uint i = 0; i < 2; ++i)
-			s[i] = EstimateCubeEdgePixelSize(v, baseEdgeId + i, baseLaneId);
-
-		const float ms = max(s.x, s.y);
-
-		for (i = 0; i < waveVolumeCount; ++i)
-		{
-			[branch]
-			if (i == wTid.y) maxEdgeLength = WaveActiveMax(ms);
-		}
-	}
-}
-
-uint EstimateCubeMapLOD(inout uint raySampleCount, uint numMips, float cubeMapSize,
-	float maxEdgeLength, uint2 wTid, float upscale = 2.0, float raySampleCountScale = 2.0)
-{
-	// Calulate the ideal cube-map resolution
-	float s = maxEdgeLength / upscale;
-
-	if (wTid.x == 0)
-	{
-		// Get the ideal ray sample amount
-		float raySampleAmt = raySampleCountScale * s / sqrt(3.0);
-
-		// Clamp the ideal ray sample amount using the user-specified upper bound of ray sample count
-		const uint raySampleCnt = ceil(raySampleAmt);
-		raySampleCount = min(raySampleCnt, raySampleCount);
-
-		// Inversely derive the cube-map resolution from the clamped ray sample amount
-		raySampleAmt = min(raySampleAmt, raySampleCount);
-		s = raySampleAmt / raySampleCountScale * sqrt(3.0);
-
-		// Use the more detailed integer level for conservation
-		//const auto level = static_cast<uint8_t>(floorf((max)(log2f(cubeMapSize / s), 0.0f)));
-		const uint level = max(log2(cubeMapSize / s), 0.0);
-
-		return min(level, numMips - 1);
-	}
-
-	return 0;
 }
 
 //--------------------------------------------------------------------------------------
@@ -168,6 +73,194 @@ uint GenVisibilityMask(float4x3 worldI, float3 eyePt, uint2 wTid)
 	return (waveMask >> wTid.y) & 0xff;
 }
 
+//--------------------------------------------------------------------------------------
+// Calculate triangle area
+//--------------------------------------------------------------------------------------
+float CalcTriangleArea(float2 edge1, float2 edge2)
+{
+	return 0.5 * abs(determinant(float2x2(edge1, edge2)));
+}
+
+//--------------------------------------------------------------------------------------
+// Calculate quad area
+//--------------------------------------------------------------------------------------
+float CalcQuadArea(float2 edges[4])
+{
+	return CalcTriangleArea(edges[0], edges[1])
+		+ CalcTriangleArea(edges[2], edges[3]);
+}
+
+//--------------------------------------------------------------------------------------
+// Get cube edge
+//--------------------------------------------------------------------------------------
+float2 GetCubeEdge(float2 vertPos, uint edgeId, uint baseLaneId)
+{
+	static const uint lanes[][2] = // Lane-index map from unique edge Ids to vertex positions
+	{
+		{ 0, 1 },
+		{ 3, 2 },
+
+		{ 1, 3 },
+		{ 2, 0 },
+
+		{ 4, 5 },
+		{ 7, 6 },
+
+		{ 5, 7 },
+		{ 6, 4 },
+
+		{ 1, 4 },
+		{ 6, 3 },
+
+		{ 5, 0 },
+		{ 2, 7 }
+	};
+
+	const uint i = edgeId;
+	const float2 v0 = WaveReadLaneAt(vertPos, baseLaneId + lanes[i][0]);
+	const float2 v1 = WaveReadLaneAt(vertPos, baseLaneId + lanes[i][1]);
+
+	return v1 - v0;
+}
+
+//--------------------------------------------------------------------------------------
+// Get cube edges per lane
+//--------------------------------------------------------------------------------------
+float4 GetCubeEdgePairPerLane(float2 vertPos, uint wTidx, uint baseLaneId)
+{
+	// Per edge processing
+	if (wTidx < 6)
+	{
+		// Each lane stores 2 edges
+		const uint baseEdgeId = 2 * wTidx;
+		float2 e[2];
+
+		[unroll]
+		for (uint i = 0; i < 2; ++i)
+			e[i] = GetCubeEdge(vertPos, baseEdgeId + i, baseLaneId);
+
+		return float4(e[0], e[1]);
+	}
+
+	return 0.0;
+}
+
+//--------------------------------------------------------------------------------------
+// Get cube-face edges
+//--------------------------------------------------------------------------------------
+float2 GetCubeFaceEdges(float4 edgePair, uint faceId, uint edgeId, uint baseLaneId)
+{
+	static const uint2 lanes[][4] = // Lane-index map from per-face edge Ids to unique edge pairs
+	{
+		{ { 5, 0 }, { 1, 1 }, { 5, 1 }, { 3, 0 } },	// +X
+		{ { 4, 0 }, { 3, 1 }, { 4, 1 }, { 1, 0 } },	// -X
+
+		{ { 0, 0 }, { 5, 0 }, { 2, 0 }, { 4, 0 } },	// +Y
+		{ { 2, 1 }, { 5, 1 }, { 0, 1 }, { 4, 1 } },	// -Y
+
+		{ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } },	// +Z
+		{ { 2, 0 }, { 3, 0 }, { 2, 1 }, { 3, 1 } }	// -Z
+	};
+
+	const uint2 i = lanes[faceId][edgeId];
+	edgePair = WaveReadLaneAt(edgePair, baseLaneId + i.x);
+
+	return i.y ? edgePair.zw : edgePair.xy;
+}
+
+//--------------------------------------------------------------------------------------
+// Estimate max edge length and projected pixel converage of the cube in pixels
+//--------------------------------------------------------------------------------------
+float EstimateCubeMaxEdgeLength(float4 edgePair, uint2 wTid)
+{
+	// Per edge processing
+	if (wTid.x < 6)
+	{
+		const float ms = max(length(edgePair.xy), length(edgePair.zw));
+		for (uint i = 0; i < g_waveVolumeCount; ++i)
+		{
+			[branch]
+			if (i == wTid.y) return WaveActiveMax(ms);
+		}
+	}
+
+	return 0.0;
+}
+
+//--------------------------------------------------------------------------------------
+// Estimate cube map LOD
+//--------------------------------------------------------------------------------------
+uint EstimateCubeMapLOD(inout uint raySampleCount, uint numMips, float cubeMapSize,
+	float4 edgePair, uint2 wTid, float upscale = 2.0, float raySampleCountScale = 2.0)
+{
+	// Calulate the ideal cube-map resolution
+	float s = EstimateCubeMaxEdgeLength(edgePair, wTid) / upscale;
+
+	if (wTid.x == 0)
+	{
+		// Get the ideal ray sample amount
+		float raySampleAmt = raySampleCountScale * s / sqrt(3.0);
+
+		// Clamp the ideal ray sample amount using the user-specified upper bound of ray sample count
+		const uint raySampleCnt = ceil(raySampleAmt);
+		raySampleCount = min(raySampleCnt, raySampleCount);
+
+		// Inversely derive the cube-map resolution from the clamped ray sample amount
+		raySampleAmt = min(raySampleAmt, raySampleCount);
+		s = raySampleAmt / raySampleCountScale * sqrt(3.0);
+
+		// Use the more detailed integer level for conservation
+		//const auto level = static_cast<uint8_t>(floorf((max)(log2f(cubeMapSize / s), 0.0f)));
+		const uint level = max(log2(cubeMapSize / s), 0.0);
+
+		return min(level, numMips - 1);
+	}
+
+	return 0;
+}
+
+//--------------------------------------------------------------------------------------
+// Estimate volume projection coverage in pixels
+//--------------------------------------------------------------------------------------
+float EstimateProjCoverage(float4 edgePair, uint2 wTid, uint faceMask, uint baseLaneId)
+{
+	// Per face processing
+	if (wTid.x < 6)
+	{
+		float2 e[4];
+
+		[unroll]
+		for (uint i = 0; i < 4; ++i)
+			GetCubeFaceEdges(edgePair, wTid.x, i, baseLaneId);
+
+		float faceArea = 0.0;
+		if (faceMask & (1 << wTid.x)) faceArea = CalcQuadArea(e);
+
+		for (i = 0; i < g_waveVolumeCount; ++i)
+		{
+			[branch]
+			if (i == wTid.y) return WaveActiveMax(faceArea);
+		}
+	}
+
+	return 0.0;
+}
+
+//--------------------------------------------------------------------------------------
+// Estimate visible pixels of the cube map
+//--------------------------------------------------------------------------------------
+float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSize)
+{
+	const float visibleFaceCount = countbits(faceMask);
+	const float edgeLength = cubeMapSize >> mipLevel;
+	const float faceArea = edgeLength * edgeLength;
+
+	return faceArea * visibleFaceCount;
+}
+
+//--------------------------------------------------------------------------------------
+// Main compute shader for volume culling
+//--------------------------------------------------------------------------------------
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
 void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 {
@@ -195,7 +288,7 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	// Viewport-visibility culling
 	if (volumeVis == 0) return;
 
-	VolumeIn volumeIn;
+	VolumeIn volumeIn = (VolumeIn)0;
 	uint raySampleCount;
 	if (wTid.x == 0)
 	{
@@ -203,17 +296,28 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 		raySampleCount = g_numSamples;
 	}
 
+	// Visiblity mask
 	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid);
-	float maxEdgeLength = 0.0;
-	float projCoverage = 0.0;
-	EstimateCubeAttributes(v.xy, wTid, maxEdgeLength, projCoverage);
+
+	// Get per-lane edges
+	const uint baseLaneId = 8 * wTid.y;
+	const float4 ep = GetCubeEdgePairPerLane(v.xy, wTid.x, baseLaneId);
+
+	// Cube map LOD
 	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
-		GetNumMips(volumeIn), volumeIn.CubeMapSize, maxEdgeLength, wTid);
+		GetNumMips(volumeIn), volumeIn.CubeMapSize, ep, wTid);
+
+	// Volume projection coverage
+	const float projCov = EstimateProjCoverage(ep, wTid, faceMask, baseLaneId);
 
 	if (wTid.x == 0)
 	{
+		// Visible pixels of the cube map
+		const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, volumeIn.CubeMapSize);
+		const uint maskBits = cubeMapPix <= projCov ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
+
 		const uint volTexId = GetSourceTextureId(volumeIn);
-		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, faceMask, volTexId);
+		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
 	}
 }

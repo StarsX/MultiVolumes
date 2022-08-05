@@ -10,6 +10,9 @@
 #define	FLT_MAX			3.402823466e+38
 #define DENSITY_SCALE	1.0
 
+#define CUBEMAP_RAYMARCH_BIT	(1 << 15)
+#define _ADAPTIVE_RAYMARCH_		0
+
 //--------------------------------------------------------------------------------------
 // Struct
 //--------------------------------------------------------------------------------------
@@ -23,7 +26,7 @@ struct VolumeInfo
 {
 	uint MipLevel;	// Mip level
 	uint SmpCount;	// Ray sample count
-	uint FaceMask;	// Cube-face visibility mask 
+	uint MaskBits;	// Highest bit in the uint16: render scheme, lowest 6 bits: cube-face visibility mask 
 	uint VolTexId;	// Volume texture Id
 };
 
