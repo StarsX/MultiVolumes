@@ -46,6 +46,17 @@ float4 ProjectToViewport(uint i, float4x4 worldViewProj, float2 viewport)
 	return float4(p.xy * viewport, p.zw);
 }
 
+float CalcTriangleArea(float2 edge1, float2 edge2)
+{
+	return 0.5 * abs(determinant(float2x2(edge1, edge2)));
+}
+
+float CalcQuadArea(float2 edges[4])
+{
+	return CalcTriangleArea(edges[0], edges[1])
+		+ CalcTriangleArea(edges[2], edges[3]);
+}
+
 float EstimateCubeEdgePixelSize(float2 v, uint edgeId, uint baseLaneId)
 {
 	static const uint ei[][2] =
@@ -76,9 +87,11 @@ float EstimateCubeEdgePixelSize(float2 v, uint edgeId, uint baseLaneId)
 	return length(v1 - v0);
 }
 
-float EstimateMaxCubeEdgePixelSize(float2 v, uint2 wTid)
+void EstimateCubeAttributes(float2 v, uint2 wTid, out float maxEdgeLength, out float projCoverage)
 {
 	static const uint waveVolumeCount = WaveGetLaneCount() / 8;
+
+	maxEdgeLength = 0.0;
 
 	// Per edge processing
 	if (wTid.x < 6)
@@ -96,18 +109,16 @@ float EstimateMaxCubeEdgePixelSize(float2 v, uint2 wTid)
 		for (i = 0; i < waveVolumeCount; ++i)
 		{
 			[branch]
-			if (i == wTid.y) return WaveActiveMax(ms);
+			if (i == wTid.y) maxEdgeLength = WaveActiveMax(ms);
 		}
 	}
-
-	return 0.0;
 }
 
 uint EstimateCubeMapLOD(inout uint raySampleCount, uint numMips, float cubeMapSize,
-	float2 v, uint2 wTid, float upscale = 2.0, float raySampleCountScale = 2.0)
+	float maxEdgeLength, uint2 wTid, float upscale = 2.0, float raySampleCountScale = 2.0)
 {
 	// Calulate the ideal cube-map resolution
-	float s = EstimateMaxCubeEdgePixelSize(v, wTid) / upscale;
+	float s = maxEdgeLength / upscale;
 
 	if (wTid.x == 0)
 	{
@@ -192,9 +203,12 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 		raySampleCount = g_numSamples;
 	}
 
-	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
-		GetNumMips(volumeIn), volumeIn.CubeMapSize, v.xy, wTid);
 	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid);
+	float maxEdgeLength = 0.0;
+	float projCoverage = 0.0;
+	EstimateCubeAttributes(v.xy, wTid, maxEdgeLength, projCoverage);
+	const uint mipLevel = EstimateCubeMapLOD(raySampleCount,
+		GetNumMips(volumeIn), volumeIn.CubeMapSize, maxEdgeLength, wTid);
 
 	if (wTid.x == 0)
 	{
