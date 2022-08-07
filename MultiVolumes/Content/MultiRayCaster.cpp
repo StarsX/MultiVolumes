@@ -671,10 +671,12 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE); // g_rwKColors
 		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 1, 0); // g_txKDepths
-		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 1);
-		pipelineLayout->SetRange(5, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 2);
-		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 3);
-		pipelineLayout->SetRange(7, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, 1, 3, 0); // g_txLightMap
+		pipelineLayout->SetRange(5, DescriptorType::SRV, numVolumeSrcs, 0, 1);
+		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 2);
+		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 3);
+		pipelineLayout->SetRange(8, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 4);
+		pipelineLayout->SetRange(9, DescriptorType::SAMPLER, 1, 0);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(2, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(3, Shader::Stage::PS);
@@ -682,6 +684,8 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetShaderStage(5, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(6, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(8, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(9, Shader::Stage::PS);
 		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"CubeRenderingLayout"), false);
 	}
@@ -694,17 +698,19 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 2, 1, 0);
 		pipelineLayout->SetRootSRV(2, 1, 0, DescriptorFlag::DATA_STATIC, Shader::Stage::PS);
-		pipelineLayout->SetRange(3, DescriptorType::SRV, 1, 2, 0);
-		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 1);
-		pipelineLayout->SetRange(5, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 2);
-		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 3);
-		pipelineLayout->SetRange(7, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetRange(3, DescriptorType::SRV, 2, 2, 0);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, numVolumeSrcs, 0, 1);
+		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 2);
+		pipelineLayout->SetRange(6, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 3);
+		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 4);
+		pipelineLayout->SetRange(8, DescriptorType::SAMPLER, 1, 0);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(3, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(4, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(5, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(6, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
+		pipelineLayout->SetShaderStage(8, Shader::Stage::PS);
 		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE_RT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"CubeRenderingRTLayout"), false);
 	}
@@ -722,14 +728,16 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	if (m_rtSupport & RT_PIPELINE)
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-		pipelineLayout->SetRootSRV(0, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRootSRV(0, 1, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(1, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetRange(2, DescriptorType::SRV, 1, 1);
-		pipelineLayout->SetRange(3, DescriptorType::UAV, 1, 0);
-		pipelineLayout->SetRange(4, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 1);
-		pipelineLayout->SetRange(5, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 2);
-		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 3);
-		pipelineLayout->SetRange(7, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(2, DescriptorType::SRV, 2, 2, 0);
+		pipelineLayout->SetRange(3, DescriptorType::UAV, 1, 0, 0);
+		pipelineLayout->SetRange(4, DescriptorType::SRV, numVolumeSrcs, 0, 1);
+		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 2);
+		pipelineLayout->SetRange(6, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 3);
+		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 4);
+		pipelineLayout->SetRange(8, DescriptorType::SAMPLER, 1, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_TRACING], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"RayTracingLayout"), false);
 	}
@@ -1318,10 +1326,12 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
 	pCommandList->SetGraphicsDescriptorTable(2, m_uavTables[UAV_TABLE_K_COLORS]);
 	pCommandList->SetGraphicsDescriptorTable(3, m_srvTables[SRV_TABLE_K_DEPTHS]);
-	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_CUBE_MAP]);
-	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
+	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_LIGHT_MAP]);
+	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_DEPTH]);
-	pCommandList->SetGraphicsDescriptorTable(7, m_samplerTable);
+	pCommandList->SetGraphicsDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_MAP]);
+	pCommandList->SetGraphicsDescriptorTable(8, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
+	pCommandList->SetGraphicsDescriptorTable(9, m_samplerTable);
 
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
@@ -1351,10 +1361,11 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
 	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetResult().get());
 	pCommandList->SetGraphicsDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
-	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_CUBE_MAP]);
-	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
-	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_DEPTH]);
-	pCommandList->SetGraphicsDescriptorTable(7, m_samplerTable);
+	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
+	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
+	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
+	pCommandList->SetGraphicsDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
+	pCommandList->SetGraphicsDescriptorTable(8, m_samplerTable);
 
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
@@ -1401,10 +1412,11 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(1, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetComputeDescriptorTable(2, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
 	pCommandList->SetComputeDescriptorTable(3, m_uavTables[UAV_TABLE_OUT]);
-	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_CUBE_MAP]);
-	pCommandList->SetComputeDescriptorTable(5, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
-	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_DEPTH]);
-	pCommandList->SetComputeDescriptorTable(7, m_samplerTable);
+	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
+	pCommandList->SetComputeDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
+	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
+	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
+	pCommandList->SetComputeDescriptorTable(8, m_samplerTable);
 
 	pCommandList->DispatchRays(m_viewport.x, m_viewport.y, 1, m_hitGroupShaderTable.get(),
 		m_missShaderTable.get(), m_rayGenShaderTable.get());

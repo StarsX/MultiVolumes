@@ -15,7 +15,7 @@ struct VSOut
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
-	bool CubeRM : SCHEME;
+	uint SmpCnt : SAMPLECOUNT;
 };
 
 //--------------------------------------------------------------------------------------
@@ -24,17 +24,17 @@ struct VSOut
 static const float3x3 planes[6] =
 {
 	// back plane
-	float3x3(-1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
+	float3x3(-1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
 	// left plane
-	float3x3(0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f),
+	float3x3(0.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0),
 	// front plane
-	float3x3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f),
+	float3x3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0),
 	// right plane
-	float3x3(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f),
+	float3x3(0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0),
 	// top plane
-	float3x3(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
+	float3x3(-1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0),
 	// bottom plane
-	float3x3(-1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f)
+	float3x3(-1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0)
 };
 
 //--------------------------------------------------------------------------------------
@@ -68,7 +68,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	output.LPt = pos;
 	output.VolId = volumeId;
 	output.SrvId = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
-	output.CubeRM = volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT;
+	output.SmpCnt = (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT) ? 0 : volumeInfo.SmpCount;
 
 	return output;
 }

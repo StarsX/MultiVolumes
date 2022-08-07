@@ -95,7 +95,8 @@ float CalcQuadArea(float2 edges[4])
 //--------------------------------------------------------------------------------------
 float2 GetCubeEdge(float2 vertPos, uint edgeId, uint baseLaneId)
 {
-	static const uint lanes[][2] = // Lane-index map from unique edge Ids to vertex positions
+	// Lane-index map from unique edge Ids to vertex positions
+	static const uint2 lanes[] =
 	{
 		{ 0, 1 },
 		{ 3, 2 },
@@ -116,9 +117,9 @@ float2 GetCubeEdge(float2 vertPos, uint edgeId, uint baseLaneId)
 		{ 2, 7 }
 	};
 
-	const uint i = edgeId;
-	const float2 v0 = WaveReadLaneAt(vertPos, baseLaneId + lanes[i][0]);
-	const float2 v1 = WaveReadLaneAt(vertPos, baseLaneId + lanes[i][1]);
+	const uint2 i = lanes[edgeId];
+	const float2 v0 = WaveReadLaneAt(vertPos, baseLaneId + i.x);
+	const float2 v1 = WaveReadLaneAt(vertPos, baseLaneId + i.y);
 
 	return v1 - v0;
 }
@@ -148,24 +149,25 @@ float4 GetCubeEdgePairPerLane(float2 vertPos, uint wTidx, uint baseLaneId)
 //--------------------------------------------------------------------------------------
 // Get cube-face edges
 //--------------------------------------------------------------------------------------
-float2 GetCubeFaceEdges(float4 edgePair, uint faceId, uint edgeId, uint baseLaneId)
+float2 GetCubeFaceEdges(float4 edgePair, uint faceId, uint edgeIdx, uint baseLaneId)
 {
-	static const uint2 lanes[][4] = // Lane-index map from per-face edge Ids to unique edge pairs
+	// Lane-index map from per-face edge indices to unique edge Ids
+	static const uint lanes[][4] =
 	{
-		{ { 5, 0 }, { 1, 1 }, { 5, 1 }, { 3, 0 } },	// +X
-		{ { 4, 0 }, { 3, 1 }, { 4, 1 }, { 1, 0 } },	// -X
+		{ 10,  3, 11,  6 },	// +X
+		{  8,  7,  9,  2 },	// -X
 
-		{ { 0, 0 }, { 5, 0 }, { 2, 0 }, { 4, 0 } },	// +Y
-		{ { 2, 1 }, { 5, 1 }, { 0, 1 }, { 4, 1 } },	// -Y
+		{  0, 10,  4,  8 },	// +Y
+		{  5, 11,  1,  9 },	// -Y
 
-		{ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } },	// +Z
-		{ { 2, 0 }, { 3, 0 }, { 2, 1 }, { 3, 1 } }	// -Z
+		{  0,  2,  1,  3 },	// +Z
+		{  4,  6,  5,  7 }	// -Z
 	};
 
-	const uint2 i = lanes[faceId][edgeId];
-	edgePair = WaveReadLaneAt(edgePair, baseLaneId + i.x);
+	const uint i = lanes[faceId][edgeIdx];
+	edgePair = WaveReadLaneAt(edgePair, baseLaneId + (i >> 1));
 
-	return i.y ? edgePair.zw : edgePair.xy;
+	return (i & 1) ? edgePair.zw : edgePair.xy;
 }
 
 //--------------------------------------------------------------------------------------
@@ -231,7 +233,7 @@ float EstimateProjCoverage(float4 edgePair, uint2 wTid, uint faceMask, uint base
 
 		[unroll]
 		for (uint i = 0; i < 4; ++i)
-			GetCubeFaceEdges(edgePair, wTid.x, i, baseLaneId);
+			e[i] = GetCubeFaceEdges(edgePair, wTid.x, i, baseLaneId);
 
 		float faceArea = 0.0;
 		if (faceMask & (1 << wTid.x)) faceArea = CalcQuadArea(e);
@@ -239,7 +241,7 @@ float EstimateProjCoverage(float4 edgePair, uint2 wTid, uint faceMask, uint base
 		for (i = 0; i < g_waveVolumeCount; ++i)
 		{
 			[branch]
-			if (i == wTid.y) return WaveActiveMax(faceArea);
+			if (i == wTid.y) return WaveActiveSum(faceArea);
 		}
 	}
 

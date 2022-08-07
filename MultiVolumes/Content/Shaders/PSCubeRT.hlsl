@@ -4,6 +4,7 @@
 
 #define _HAS_DEPTH_MAP_
 
+#include "RayCast.hlsli"
 #include "PSCube.hlsli"
 
 #define ONE_THRESHOLD 0.99
@@ -21,7 +22,7 @@ struct PSIn
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
-	bool CubeRM : SCHEME;
+	uint SmpCnt : SAMPLECOUNT;
 };
 
 //--------------------------------------------------------------------------------------
@@ -66,14 +67,18 @@ float4 main(PSIn input) : SV_TARGET
 	const float3 localSpaceEyePt = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 	const float3 rayDir = input.LPt - localSpaceEyePt;
 
+	float2 xy = input.Pos.xy / g_viewport;
+	xy = xy * 2.0 - 1.0;
+	xy.y = -xy.y;
+
 	min16float4 dst;
 #if _ADAPTIVE_RAYMARCH_
-	if (input.CubeRM)
+	if (input.SmpCnt > 0)
+		dst = RayCast(index, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+			input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
+	else
 #endif
 		dst = CubeCast(index, input.UVW, input.LPt, rayDir, input.SrvId);
-#if _ADAPTIVE_RAYMARCH_
-	else dst = 0.0; // dst = RayCast(); TODO: screen-space ray marching
-#endif
 
 	// Set up a trace. No work is done yet.
 	// Trace the ray.
@@ -96,24 +101,31 @@ float4 main(PSIn input) : SV_TARGET
 		{
 			const uint volumeId = q.CommittedInstanceIndex();
 			const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-			const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
 			const float t = q.CommittedRayT();
+			const float3 rayOrigin = q.CommittedObjectRayOrigin();
 			const float3 rayDir = q.CommittedObjectRayDirection();
-			const float3 pos = q.CommittedObjectRayOrigin() + t * rayDir;
-
-			const uint primId = q.CommittedPrimitiveIndex();
-			const uint faceId = primId / 2;
-			const float3 uvw = float3(GetUV(primId, q.CommittedTriangleBarycentrics()), faceId);
-
+			
 			min16float4 src;
 #if _ADAPTIVE_RAYMARCH_
-			if (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)
+			if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT))
+			{
+				const PerObject perObject = g_roPerObject[volumeId];
+				src = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeId,
+					volumeInfo.SmpCount, perObject.WorldViewProjI, perObject.ToLightSpace);
+			}
+			else
 #endif
+			{
+				const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+				const float3 pos = rayOrigin + t * rayDir;
+
+				const uint primId = q.CommittedPrimitiveIndex();
+				const uint faceId = primId / 2;
+				const float3 uvw = float3(GetUV(primId, q.CommittedTriangleBarycentrics()), faceId);
+
 				src = CubeCast(index, uvw, pos, rayDir, srvIdx);
-#if _ADAPTIVE_RAYMARCH_
-			else src = 0.0; // src = RayCast(); TODO: screen-space ray marching
-#endif
+			}
 
 			dst += src * (1.0 - dst.w);
 			ray.TMin = dst.w < ONE_THRESHOLD ? t + 0.001 : ray.TMax;

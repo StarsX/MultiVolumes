@@ -4,6 +4,7 @@
 
 #define _HAS_DEPTH_MAP_
 
+#include "RayCast.hlsli"
 #include "PSCube.hlsli"
 
 //--------------------------------------------------------------------------------------
@@ -16,7 +17,7 @@ struct PSIn
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
-	bool CubeRM : SCHEME;
+	uint SmpCnt : SAMPLECOUNT;
 };
 
 RWTexture2DArray<float4>	g_rwKColors;
@@ -33,6 +34,9 @@ void main(PSIn input)
 
 	const uint2 uv = input.Pos.xy;
 	const uint depth = asuint(input.Pos.z);
+	float2 xy = input.Pos.xy / g_viewport;
+	xy = xy * 2.0 - 1.0;
+	xy.y = -xy.y;
 
 	for (uint i = 0; i < NUM_OIT_LAYERS; ++i)
 	{
@@ -42,12 +46,13 @@ void main(PSIn input)
 		{
 			min16float4 color;
 #if _ADAPTIVE_RAYMARCH_
-			if (input.CubeRM)
+			if (input.SmpCnt > 0)
+				color = RayCast(uv, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+					input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
+			else
 #endif
 				color = CubeCast(uv, input.UVW, input.LPt, rayDir, input.SrvId);
-#if _ADAPTIVE_RAYMARCH_
-			else color = 0.0; // color = RayCast(); TODO: screen-space ray marching
-#endif
+
 			if (color.w > 0.0 && color.w <= 1.0) g_rwKColors[uvw] = color;
 		}
 	}

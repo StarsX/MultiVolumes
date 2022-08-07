@@ -3,18 +3,16 @@
 //--------------------------------------------------------------------------------------
 
 #include "SharedConsts.h"
-#include "Common.hlsli"
 
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
 StructuredBuffer<PerObject> g_roPerObject	: register (t0);
 
-TextureCube	g_txCubeMaps[]			: register (t0, space1);
+TextureCube	g_txCubeMaps[]			: register (t0, space3);
 
 #ifdef _HAS_DEPTH_MAP_
-TextureCube<float> g_txCubeDepths[]	: register (t0, space2);
-Texture2D<float> g_txDepth			: register (t0, space3);
+TextureCube<float> g_txCubeDepths[]	: register (t0, space4);
 #endif
 
 //--------------------------------------------------------------------------------------

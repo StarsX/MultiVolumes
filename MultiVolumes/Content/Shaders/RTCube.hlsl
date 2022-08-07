@@ -4,6 +4,7 @@
 
 #define _HAS_DEPTH_MAP_
 
+#include "RayCast.hlsli"
 #include "PSCube.hlsli"
 
 #define ONE_THRESHOLD 0.99
@@ -24,16 +25,10 @@ struct RayPayload
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-RaytracingAS g_scene : register (t0);
-Buffer<uint4> g_roVolumes : register (t1);
+RaytracingAS g_scene : register (t1);
+Buffer<uint4> g_roVolumes : register (t2);
 
 RWTexture2D<float4> g_renderTarget;
-
-// Retrieve hit object position.
-float3 HitObjectPosition()
-{
-	return ObjectRayOrigin() + RayTCurrent() * ObjectRayDirection();
-}
 
 uint GetVertId(uint primId, uint i)
 {
@@ -107,26 +102,40 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 {
 	const uint volumeId = InstanceIndex();
 	const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-	const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 
-	const float3 pos = HitObjectPosition();
+	const float t = RayTCurrent();
+	const float3 rayOrigin = ObjectRayOrigin();
 	const float3 rayDir = ObjectRayDirection();
 
-	const uint primId = PrimitiveIndex();
-	const uint faceId = primId / 2;
-	const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
-
+	const uint2 index = DispatchRaysIndex().xy;
 	min16float4 color;
 #if _ADAPTIVE_RAYMARCH_
-	if (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)
+	if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT))
+	{
+		const PerObject perObject = g_roPerObject[volumeId];
+
+		float2 xy = (index + 0.5) / DispatchRaysDimensions().xy;
+		xy = xy * 2.0 - 1.0;
+		xy.y = -xy.y;
+
+		color = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeId,
+			volumeInfo.SmpCount, perObject.WorldViewProjI, perObject.ToLightSpace);
+	}
+	else
 #endif
-		color = CubeCast(DispatchRaysIndex().xy, uvw, pos, rayDir, srvIdx);
-#if _ADAPTIVE_RAYMARCH_
-	else color = 0.0; // color = RayCast(); TODO: screen-space ray marching
-#endif
+	{
+		const uint srvIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+		const float3 pos = rayOrigin + t * rayDir;
+
+		const uint primId = PrimitiveIndex();
+		const uint faceId = primId / 2;
+		const float3 uvw = float3(GetUV(primId, attr.barycentrics), faceId);
+
+		color = CubeCast(index, uvw, pos, rayDir, srvIdx);
+	}
 
 	payload.Color += color * (1.0 - payload.Color.w);
-	payload.T = RayTCurrent() + 0.001;
+	payload.T = t + 0.001;
 }
 
 [shader("miss")]

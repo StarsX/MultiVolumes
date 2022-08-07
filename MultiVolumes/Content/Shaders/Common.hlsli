@@ -11,7 +11,7 @@
 #define DENSITY_SCALE	1.0
 
 #define CUBEMAP_RAYMARCH_BIT	(1 << 15)
-#define _ADAPTIVE_RAYMARCH_		0
+#define _ADAPTIVE_RAYMARCH_		1
 
 //--------------------------------------------------------------------------------------
 // Struct
