@@ -172,7 +172,6 @@ protected:
 	XUSG::DescriptorTable	m_cbvSrvTables[FrameCount];
 	XUSG::DescriptorTable	m_uavTables[NUM_UAV_TABLE];
 	XUSG::DescriptorTable	m_srvTables[NUM_SRV_TABLE];
-	XUSG::DescriptorTable	m_samplerTable;
 
 	std::vector<XUSG::Texture::sptr>	m_fileSrcs;
 	std::vector<XUSG::Texture3D::uptr>	m_volumes;

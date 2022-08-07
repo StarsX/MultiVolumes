@@ -182,12 +182,8 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	ResourceBarrier barrier;
 	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
 
-	const DescriptorPool descriptorPools[] =
-	{
-		m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL),
-		m_descriptorTableCache->GetDescriptorPool(SAMPLER_POOL)
-	};
-	pCommandList->SetDescriptorPools(static_cast<uint32_t>(size(descriptorPools)), descriptorPools);
+	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	pCommandList->SetDescriptorPools(1, &descriptorPool);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[LOAD_VOLUME_DATA]);
@@ -196,7 +192,6 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	// Set descriptor tables
 	pCommandList->SetComputeDescriptorTable(0, m_srvTables[SRV_TABLE_FILE_SRC]);
 	pCommandList->SetComputeDescriptorTable(1, m_uavInitTables[i]);
-	pCommandList->SetComputeDescriptorTable(2, m_samplerTable);
 
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4));
@@ -397,10 +392,9 @@ void MultiRayCaster::RayMarchL(const XUSG::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(2, m_uavTables[UAV_TABLE_LIGHT_MAP]);
 	pCommandList->SetComputeDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_SHADOW]);
-	pCommandList->SetComputeDescriptorTable(5, m_samplerTable);
-	pCommandList->SetCompute32BitConstant(6, m_maxLightSamples);
-	pCommandList->SetCompute32BitConstant(6, m_coeffSH ? 1 : 0, 1);
-	if (m_coeffSH) pCommandList->SetComputeRootShaderResourceView(7, m_coeffSH.get());
+	pCommandList->SetCompute32BitConstant(5, m_maxLightSamples);
+	pCommandList->SetCompute32BitConstant(5, m_coeffSH ? 1 : 0, 1);
+	if (m_coeffSH) pCommandList->SetComputeRootShaderResourceView(6, m_coeffSH.get());
 
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4));
@@ -575,12 +569,18 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 	const auto numVolumes = static_cast<uint32_t>(m_cubeMaps.size());
 	const auto numVolumeSrcs = static_cast<uint32_t>(m_volumes.size());
 
+	const Sampler samplers[] =
+	{
+		m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_CLAMP),
+		m_descriptorTableCache->GetSampler(SamplerPreset::POINT_CLAMP)
+	};
+
 	// Load grid data
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0);
 		pipelineLayout->SetRange(1, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
-		pipelineLayout->SetRange(2, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetStaticSamplers(samplers, 1, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[LOAD_VOLUME_DATA], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"LoadGridDataLayout"), false);
 	}
@@ -614,9 +614,9 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(2, DescriptorType::UAV, 1, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::SRV, numVolumeSrcs, 0, 1);
 		pipelineLayout->SetRange(4, DescriptorType::SRV, 1, 0, 2);
-		pipelineLayout->SetRange(5, DescriptorType::SAMPLER, 1, 0);
-		pipelineLayout->SetConstants(6, 2, 1);
-		pipelineLayout->SetRootSRV(7, 1, 2);
+		pipelineLayout->SetConstants(5, 2, 1);
+		pipelineLayout->SetRootSRV(6, 1, 2);
+		pipelineLayout->SetStaticSamplers(samplers, 1, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_MARCH_L], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"LightSpaceRayMarchingLayout"), false);
 	}
@@ -631,7 +631,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(3, DescriptorType::UAV, g_numCubeMips * numVolumes, 0, 1, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(4, DescriptorType::SRV, numVolumeSrcs, 0, 1);
 		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 2);
-		pipelineLayout->SetRange(6, DescriptorType::SAMPLER, 2, 0);
+		pipelineLayout->SetStaticSamplers(samplers, 2, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_MARCH_V], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"ViewSpaceRayMarchingLayout"), false);
 	}
@@ -676,7 +676,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(6, DescriptorType::SRV, 1, 0, 2);
 		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 3);
 		pipelineLayout->SetRange(8, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 4);
-		pipelineLayout->SetRange(9, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetStaticSamplers(samplers, 1, 0, 0, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(2, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(3, Shader::Stage::PS);
@@ -685,7 +685,6 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetShaderStage(6, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(8, Shader::Stage::PS);
-		pipelineLayout->SetShaderStage(9, Shader::Stage::PS);
 		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"CubeRenderingLayout"), false);
 	}
@@ -703,14 +702,13 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 2);
 		pipelineLayout->SetRange(6, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 3);
 		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips* numVolumes, 0, 4);
-		pipelineLayout->SetRange(8, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetStaticSamplers(samplers, 1, 0, 0, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(3, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(4, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(5, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(6, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(7, Shader::Stage::PS);
-		pipelineLayout->SetShaderStage(8, Shader::Stage::PS);
 		XUSG_X_RETURN(m_pipelineLayouts[RENDER_CUBE_RT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"CubeRenderingRTLayout"), false);
 	}
@@ -737,7 +735,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 0, 2);
 		pipelineLayout->SetRange(6, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 3);
 		pipelineLayout->SetRange(7, DescriptorType::SRV, g_numCubeMips * numVolumes, 0, 4);
-		pipelineLayout->SetRange(8, DescriptorType::SAMPLER, 1, 0);
+		pipelineLayout->SetStaticSamplers(samplers, 1, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_TRACING], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"RayTracingLayout"), false);
 	}
@@ -1088,12 +1086,6 @@ bool MultiRayCaster::createDescriptorTables(const Texture* pColorOut)
 		XUSG_X_RETURN(m_uavTables[UAV_TABLE_OUT], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
-	// Create the sampler
-	const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-	const SamplerPreset samplers[] = { SamplerPreset::LINEAR_CLAMP, SamplerPreset::POINT_CLAMP };
-	descriptorTable->SetSamplers(0, static_cast<uint32_t>(size(samplers)), samplers, m_descriptorTableCache.get());
-	XUSG_X_RETURN(m_samplerTable, descriptorTable->GetSamplerTable(m_descriptorTableCache.get()), false);
-
 	return true;
 }
 
@@ -1235,7 +1227,6 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 	pCommandList->SetComputeDescriptorTable(3, m_uavTables[UAV_TABLE_CUBE_DEPTH]);
 	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetComputeDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
-	pCommandList->SetComputeDescriptorTable(6, m_samplerTable);
 
 	// Dispatch cube
 	pCommandList->ExecuteIndirect(m_commandLayouts[DISPATCH_LAYOUT].get(), 1, m_volumeDispatchArg.get());
@@ -1331,7 +1322,6 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetGraphicsDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetGraphicsDescriptorTable(8, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
-	pCommandList->SetGraphicsDescriptorTable(9, m_samplerTable);
 
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
@@ -1365,7 +1355,6 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetGraphicsDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetGraphicsDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
-	pCommandList->SetGraphicsDescriptorTable(8, m_samplerTable);
 
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 	pCommandList->IASetIndexBuffer(m_indexBuffer->GetIBV());
@@ -1416,7 +1405,6 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
-	pCommandList->SetComputeDescriptorTable(8, m_samplerTable);
 
 	pCommandList->DispatchRays(m_viewport.x, m_viewport.y, 1, m_hitGroupShaderTable.get(),
 		m_missShaderTable.get(), m_rayGenShaderTable.get());
