@@ -15,6 +15,7 @@ struct VSOut
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
+	uint TexId	: VOLTEXID;
 	uint SmpCnt : SAMPLECOUNT;
 };
 
@@ -68,6 +69,7 @@ VSOut main(uint vid : SV_VertexID, uint iid : SV_InstanceID)
 	output.LPt = pos;
 	output.VolId = volumeId;
 	output.SrvId = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
+	output.TexId = volumeInfo.VolTexId;
 	output.SmpCnt = (volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT) ? 0 : volumeInfo.SmpCount;
 
 	return output;

@@ -17,6 +17,7 @@ struct PSIn
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
+	uint TexId	: VOLTEXID;
 	uint SmpCnt : SAMPLECOUNT;
 };
 
@@ -47,7 +48,7 @@ void main(PSIn input)
 			min16float4 color;
 #if _ADAPTIVE_RAYMARCH_
 			if (input.SmpCnt > 0)
-				color = RayCast(uv, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+				color = RayCast(uv, xy, localSpaceEyePt, normalize(rayDir), input.TexId,
 					input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
 			else
 #endif

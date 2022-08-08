@@ -32,7 +32,7 @@ min16float4 GetSampleNU(uint i, float3 uvw)
 // Screen-space ray marching casting
 //--------------------------------------------------------------------------------------
 min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
-	uint volumeId, uint sampleCount, matrix worldViewProjI, float4x3 localToLight)
+	uint volTexId, uint sampleCount, matrix worldViewProjI, float4x3 localToLight)
 {
 	if (!ComputeRayOrigin(rayOrigin, rayDir)) return 0.0;
 
@@ -59,7 +59,7 @@ min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
 		const float3 uvw = LocalToTex3DSpace(pos);
 
 		// Get a sample
-		min16float4 color = GetSampleNU(volumeId, uvw);
+		min16float4 color = GetSampleNU(volTexId, uvw);
 
 		// Skip empty space
 		if (color.w > ZERO_THRESHOLD)

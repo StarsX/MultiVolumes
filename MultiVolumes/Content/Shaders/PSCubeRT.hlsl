@@ -22,6 +22,7 @@ struct PSIn
 	float3 LPt	: POSLOCAL;
 	uint VolId	: VOLUMEID;
 	uint SrvId	: SRVINDEX;
+	uint TexId	: VOLTEXID;
 	uint SmpCnt : SAMPLECOUNT;
 };
 
@@ -74,7 +75,7 @@ float4 main(PSIn input) : SV_TARGET
 	min16float4 dst;
 #if _ADAPTIVE_RAYMARCH_
 	if (input.SmpCnt > 0)
-		dst = RayCast(index, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+		dst = RayCast(index, xy, localSpaceEyePt, normalize(rayDir), input.TexId,
 			input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
 	else
 #endif
@@ -103,7 +104,9 @@ float4 main(PSIn input) : SV_TARGET
 			const VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 
 			const float t = q.CommittedRayT();
-			const float3 rayOrigin = q.CommittedObjectRayOrigin();
+			// [Workaround] Some versions of driver returns wrong CommittedObjectRayOrigin()
+			//const float3 rayOrigin = q.CommittedObjectRayOrigin();
+			const float3 rayOrigin = mul(float4(ray.Origin, 1.0), q.CommittedWorldToObject4x3());
 			const float3 rayDir = q.CommittedObjectRayDirection();
 			
 			min16float4 src;
@@ -111,7 +114,7 @@ float4 main(PSIn input) : SV_TARGET
 			if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT))
 			{
 				const PerObject perObject = g_roPerObject[volumeId];
-				src = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeId,
+				src = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeInfo.VolTexId,
 					volumeInfo.SmpCount, perObject.WorldViewProjI, perObject.ToLightSpace);
 			}
 			else
