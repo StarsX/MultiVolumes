@@ -2,7 +2,7 @@
 // Copyright (c) XU, Tianchen. All rights reserved.
 //--------------------------------------------------------------------------------------
 
-#define GROUP_VOLUME_COUNT	1
+#define GROUP_VOLUME_COUNT	4
 #define NUM_CUBE_MIP		5
 #define NUM_OIT_LAYERS		8
 

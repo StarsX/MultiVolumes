@@ -58,19 +58,19 @@ bool IsFaceVisible(uint face, float3 localSpaceEyePt)
 	return (face & 0x1) ? viewComp > -1.0 : viewComp < 1.0;
 }
 
-uint GenVisibilityMask(float4x3 worldI, float3 eyePt, uint2 wTid)
+uint GenVisibilityMask(float4x3 worldI, float3 eyePt, uint wTidx, uint baseLaneId)
 {
 	// Per face processing
 	bool isVisible = false;
-	if (wTid.x < 6)
+	if (wTidx < 6)
 	{
 		const float3 localSpaceEyePt = mul(float4(eyePt, 1.0), worldI);
-		isVisible = IsFaceVisible(wTid.x, localSpaceEyePt);
+		isVisible = IsFaceVisible(wTidx, localSpaceEyePt);
 	}
 
 	const uint waveMask = WaveActiveBallot(isVisible).x;
 
-	return (waveMask >> wTid.y) & 0xff;
+	return (waveMask >> baseLaneId) & 0xff;
 }
 
 //--------------------------------------------------------------------------------------
@@ -299,10 +299,10 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	}
 
 	// Visiblity mask
-	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid);
+	const uint baseLaneId = 8 * wTid.y;
+	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid.x, baseLaneId);
 
 	// Get per-lane edges
-	const uint baseLaneId = 8 * wTid.y;
 	const float4 ep = GetCubeEdgePairPerLane(v.xy, wTid.x, baseLaneId);
 
 	// Cube map LOD
