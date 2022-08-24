@@ -368,8 +368,8 @@ void MultiVolumes::OnWindowSizeChanged(int width, int height)
 		m_renderTargets[n].reset();
 		m_fenceValues[n] = m_fenceValues[m_frameIndex];
 	}
-	m_descriptorTableCache->ResetDescriptorPool(CBV_SRV_UAV_POOL, 0);
-	//m_descriptorTableCache->ResetDescriptorPool(RTV_POOL, 0);
+	m_descriptorTableCache->ResetDescriptorPool(CBV_SRV_UAV_POOL);
+	//m_descriptorTableCache->ResetDescriptorPool(RTV_POOL);
 
 	// Determine the render target size in pixels.
 	m_width = (max)(width, 1);

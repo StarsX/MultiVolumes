@@ -179,11 +179,11 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		XUSG_X_RETURN(m_srvTables[SRV_TABLE_FILE_SRC], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
 	}
 
-	ResourceBarrier barrier;
-	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
-
 	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
 	pCommandList->SetDescriptorPools(1, &descriptorPool);
+
+	ResourceBarrier barrier;
+	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[LOAD_VOLUME_DATA]);
@@ -233,12 +233,11 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 
 void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
 {
+	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	pCommandList->SetDescriptorPools(1, &descriptorPool);
+
 	ResourceBarrier barrier;
 	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
-
-	const DescriptorPool pDescriptorPool[] =
-	{ m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL) };
-	pCommandList->SetDescriptorPools(1, pDescriptorPool);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[INIT_VOLUME_DATA]);
