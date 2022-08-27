@@ -307,5 +307,5 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-!XUSG.pdb
+!XUSG*.pdb
 !Bin/*/*.[Oo]bj
