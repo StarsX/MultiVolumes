@@ -28,29 +28,17 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{c6cbf730-3a04-4e8f-9fa2-94d7d2145f9b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="XUSG\Core">
-      <UniqueIdentifier>{93b2fd6a-d8de-4bdf-8acb-1cb7bf5288de}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Shaders\RayCaster">
       <UniqueIdentifier>{e93fac53-d72f-4ff0-ae80-96b9000555e1}</UniqueIdentifier>
     </Filter>
-    <Filter Include="XUSG\Advanced">
-      <UniqueIdentifier>{e63d709e-f1e3-402f-aea8-146b9080366c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="XUSG\Optional">
       <UniqueIdentifier>{f0f25b24-b3cf-41e6-b367-1cab524f2301}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="XUSG\RayTracing">
-      <UniqueIdentifier>{89818e1e-b1a8-4b53-8cad-973716f7e9c3}</UniqueIdentifier>
     </Filter>
     <Filter Include="Shaders\VolumeData">
       <UniqueIdentifier>{0bbf5cde-5c5e-440d-b63c-8a2aa010497d}</UniqueIdentifier>
     </Filter>
     <Filter Include="Shaders\SHMath">
       <UniqueIdentifier>{00a4318e-992f-4387-8f21-5cf53799c760}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="XUSG\Ultimate">
-      <UniqueIdentifier>{fc5d80dc-47c5-4363-b9c1-0657984d0e15}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -72,20 +60,11 @@
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Common\dds.h">
-      <Filter>Common\Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="MultiVolumes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Content\MultiRayCaster.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Advanced\XUSGDDSLoader.h">
-      <Filter>XUSG\Advanced</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Core\XUSG.h">
-      <Filter>XUSG\Core</Filter>
     </ClInclude>
     <ClInclude Include="Common\d3d12.h">
       <Filter>Common\Header Files</Filter>
@@ -99,29 +78,11 @@
     <ClInclude Include="Content\SharedConsts.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="XUSG\RayTracing\XUSGRayTracing.h">
-      <Filter>XUSG\RayTracing</Filter>
-    </ClInclude>
     <ClInclude Include="Common\D3D12RaytracingFallback.h">
-      <Filter>Common\Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Common\D3D12RaytracingHelpers.hpp">
       <Filter>Common\Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Content\LightProbe.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Advanced\XUSGHalton.h">
-      <Filter>XUSG\Advanced</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Advanced\XUSGSHSharedConsts.h">
-      <Filter>XUSG\Advanced</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Advanced\XUSGSphericalHarmonics.h">
-      <Filter>XUSG\Advanced</Filter>
-    </ClInclude>
-    <ClInclude Include="XUSG\Ultimate\XUSGUltimate.h">
-      <Filter>XUSG\Ultimate</Filter>
     </ClInclude>
     <ClInclude Include="Common\d3dcommon.h">
       <Filter>Common\Header Files</Filter>
@@ -131,6 +92,27 @@
     </ClInclude>
     <ClInclude Include="Common\dxgiformat.h">
       <Filter>Common\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGDDSLoader.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGHalton.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGSHSharedConsts.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Advanced\XUSGSphericalHarmonics.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Core\XUSG.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\RayTracing\XUSGRayTracing.h">
+      <Filter>XUSG</Filter>
+    </ClInclude>
+    <ClInclude Include="XUSG\Ultimate\XUSGUltimate.h">
+      <Filter>XUSG</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

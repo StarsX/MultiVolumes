@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "DXFramework.h"
 #include "Core/XUSG.h"
 #include "RayTracing/XUSGRayTracing.h"
 
