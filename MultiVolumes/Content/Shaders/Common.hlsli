@@ -13,15 +13,11 @@
 #define CUBEMAP_RAYMARCH_BIT	(1 << 15)
 #define _ADAPTIVE_RAYMARCH_		1
 
+typedef uint VolumeDesc;
+
 //--------------------------------------------------------------------------------------
 // Struct
 //--------------------------------------------------------------------------------------
-struct VolumeDesc
-{
-	uint TexId_NumMips;
-	float CubeMapSize;
-};
-
 struct VolumeInfo
 {
 	uint MipLevel;	// Mip level
@@ -68,14 +64,19 @@ cbuffer cbSampleRes
 SamplerState g_smpLinear : register (s0);
 
 //--------------------------------------------------------------------------------------
-// Helper functions
+// Helper functions for decoding
 //--------------------------------------------------------------------------------------
-uint GetNumMips(VolumeDesc volume)
-{
-	return volume.TexId_NumMips >> 16;
-}
-
 uint GetSourceTextureId(VolumeDesc volume)
 {
-	return volume.TexId_NumMips & 0xffff;
+	return volume & 0x3fff;
+}
+
+uint GetNumMips(VolumeDesc volume)
+{
+	return (volume >> 14) & 0xf;
+}
+
+uint GetCubeMapSize(VolumeDesc volume)
+{
+	return volume >> 18;
 }

@@ -42,9 +42,9 @@ struct PerObject
 
 struct VolumeDesc
 {
-	uint16_t VolTexId;
-	uint16_t NumMips;
-	float CubeMapSize;
+	uint32_t VolTexId : 14;
+	uint32_t NumMips : 4;
+	uint32_t CubeMapSize : 14;
 };
 
 struct VolumeInfo
@@ -500,7 +500,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 			//volume.VolTexId = static_cast<uint16_t>(rand() % numVolumeSrcs);
 			volume.VolTexId = static_cast<uint16_t>(i % numVolumeSrcs);
 			volume.NumMips = g_numCubeMips;
-			volume.CubeMapSize = static_cast<float>(m_gridSize);
+			volume.CubeMapSize = m_gridSize;
 		}
 
 		m_volumeDescs = StructuredBuffer::MakeUnique();

@@ -172,6 +172,9 @@
     <None Include="Content\Shaders\RayCast.hlsli">
       <Filter>Shaders\RayCaster</Filter>
     </None>
+    <None Include="Content\Shaders\VolumeCull.hlsli">
+      <Filter>Shaders\RayCaster</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Content\Shaders\CSRayMarchL.hlsl">
