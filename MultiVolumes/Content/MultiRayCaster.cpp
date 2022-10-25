@@ -341,7 +341,7 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList,
 	uint8_t frameIndex, RenderTarget* pColorOut, OITMethod oitMethod)
 {
 	cullVolumes(pCommandList, frameIndex);
-	RayMarchL(pCommandList, frameIndex);
+	rayMarchL(pCommandList, frameIndex);
 	rayMarchV(pCommandList, frameIndex);
 
 	switch (oitMethod)
@@ -360,33 +360,6 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList,
 	}
 
 	m_frameIdx = m_frameIdx <= UINT32_MAX ? m_frameIdx + 1 : m_frameIdx;
-}
-
-void MultiRayCaster::RayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex)
-{
-	// Set barriers
-	static vector<ResourceBarrier> barriers(m_lightMaps.size());
-	auto numBarriers = 0u;
-	for (auto& lightMap : m_lightMaps)
-		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers.data());
-
-	// Set pipeline state
-	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_L]);
-	pCommandList->SetPipelineState(m_pipelines[RAY_MARCH_L]);
-
-	// Set descriptor tables
-	pCommandList->SetComputeDescriptorTable(0, m_cbvSrvTables[frameIndex]);
-	pCommandList->SetComputeDescriptorTable(1, m_srvTables[SRV_TABLE_VOLUME_DESCS]);
-	pCommandList->SetComputeDescriptorTable(2, m_uavTables[UAV_TABLE_LIGHT_MAP]);
-	pCommandList->SetComputeDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME]);
-	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_SHADOW]);
-	pCommandList->SetCompute32BitConstant(5, m_maxLightSamples);
-	pCommandList->SetCompute32BitConstant(5, m_coeffSH ? 1 : 0, 1);
-	if (m_coeffSH) pCommandList->SetComputeRootShaderResourceView(6, m_coeffSH.get());
-
-	// Dispatch grid
-	pCommandList->Dispatch(XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4));
 }
 
 bool MultiRayCaster::createCubeVB(XUSG::CommandList* pCommandList, vector<Resource::uptr>& uploaders)
@@ -1178,6 +1151,33 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 	// Dispatch cube
 	const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
 	pCommandList->Dispatch(XUSG_DIV_UP(numVolumes, GROUP_VOLUME_COUNT), 1, 1);
+}
+
+void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+{
+	// Set barriers
+	static vector<ResourceBarrier> barriers(m_lightMaps.size());
+	auto numBarriers = 0u;
+	for (auto& lightMap : m_lightMaps)
+		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
+	pCommandList->Barrier(numBarriers, barriers.data());
+
+	// Set pipeline state
+	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_L]);
+	pCommandList->SetPipelineState(m_pipelines[RAY_MARCH_L]);
+
+	// Set descriptor tables
+	pCommandList->SetComputeDescriptorTable(0, m_cbvSrvTables[frameIndex]);
+	pCommandList->SetComputeDescriptorTable(1, m_srvTables[SRV_TABLE_VOLUME_DESCS]);
+	pCommandList->SetComputeDescriptorTable(2, m_uavTables[UAV_TABLE_LIGHT_MAP]);
+	pCommandList->SetComputeDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME]);
+	pCommandList->SetComputeDescriptorTable(4, m_srvTables[SRV_TABLE_SHADOW]);
+	pCommandList->SetCompute32BitConstant(5, m_maxLightSamples);
+	pCommandList->SetCompute32BitConstant(5, m_coeffSH ? 1 : 0, 1);
+	if (m_coeffSH) pCommandList->SetComputeRootShaderResourceView(6, m_coeffSH.get());
+
+	// Dispatch grid
+	pCommandList->Dispatch(XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4), XUSG_DIV_UP(m_lightGridSize, 4));
 }
 
 void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)

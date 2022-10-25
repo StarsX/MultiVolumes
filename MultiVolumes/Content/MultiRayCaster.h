@@ -48,7 +48,6 @@ public:
 		const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
 	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex,
 		XUSG::RenderTarget* pColorOut, OITMethod oitMethod = OIT_K_BUFFER);
-	void RayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	static const uint8_t FrameCount = 3;
 
@@ -128,6 +127,7 @@ protected:
 	bool buildShaderTables(const XUSG::RayTracing::Device* pDevice);
 
 	void cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex);
