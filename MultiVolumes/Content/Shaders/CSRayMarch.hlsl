@@ -117,6 +117,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 	float t = 0.0;
 	min16float step = stepScale;
+	float prevDensity = 0.0;
 	for (uint i = 0; i < volumeInfo.SmpCount; ++i)
 	{
 		const float3 pos = rayOrigin + rayDir * t;
@@ -125,37 +126,50 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 		// Get a sample
 		min16float4 color = GetSample(volumeInfo.VolTexId, uvw);
+		min16float newStep = stepScale;
+		float dDensity = 1.0;
 
 		// Skip empty space
 		if (color.w > ZERO_THRESHOLD)
 		{
 			// Sample light
-			const float3 light = GetLight(pos, perObject.ToLightSpace);
+			const float3 light = GetLight(volumeId, pos);
+
+			// Update step
+			dDensity = color.w - prevDensity;
+			const min16float opacity = saturate(color.w * step);
+			newStep = GetStep(dDensity, transm, opacity, stepScale);
+			step = (step + newStep) * 0.5;
+			prevDensity = color.w;
 
 			// Accumulate color
-			color.w = GetOpacity(color.w, step);
-			color.xyz *= transm;
+			const min16float tansl = GetTranslucency(color.w, step);
+			color.w = saturate(color.w * step);
 #ifdef _PRE_MULTIPLIED_
 			color.xyz = GetPremultiplied(color.xyz, step);
 #else
+			//color.xyz *= color.w;
 			color.xyz *= color.w;
 #endif
+			color.xyz *= transm;
 
 			//scatter += color.xyz;
-			scatter += min16float3(light) * color.xyz;
+			scatter += color.xyz * min16float3(light);
 
 			// Attenuate ray-throughput
-			transm *= 1.0 - color.w;
+			transm *= 1.0 - tansl;
 			if (transm < ZERO_THRESHOLD) break;
 		}
 
 		// Update position along ray
-		step = GetStep(transm, color.w, stepScale);
+		step = newStep;
 		t += step;
 #ifdef _HAS_DEPTH_MAP_
 		if (t > tMax) break;
 #endif
 	}
+
+	scatter.xyz /= 2.0 * PI;
 
 	g_rwCubeMaps[uavIdx][index] = float4(scatter, 1.0 - transm);
 }

@@ -48,8 +48,8 @@ void main(PSIn input)
 			min16float4 color;
 #if _ADAPTIVE_RAYMARCH_
 			if (input.SmpCnt > 0)
-				color = RayCast(uv, xy, localSpaceEyePt, normalize(rayDir), input.TexId,
-					input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
+				color = RayCast(uv, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+					input.TexId, input.SmpCnt, perObject.WorldViewProjI);
 			else
 #endif
 				color = CubeCast(uv, input.UVW, input.LPt, rayDir, input.SrvId);

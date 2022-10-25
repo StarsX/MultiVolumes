@@ -118,8 +118,8 @@ void closestHitMain(inout RayPayload payload, in Attributes attr)
 		xy = xy * 2.0 - 1.0;
 		xy.y = -xy.y;
 
-		color = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeInfo.VolTexId,
-			volumeInfo.SmpCount, perObject.WorldViewProjI, perObject.ToLightSpace);
+		color = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeId,
+			volumeInfo.VolTexId, volumeInfo.SmpCount, perObject.WorldViewProjI);
 	}
 	else
 #endif

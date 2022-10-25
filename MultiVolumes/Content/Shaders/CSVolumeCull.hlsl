@@ -35,9 +35,9 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	const float4 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
 
 	// If any vertices are inside viewport
-	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0);
+	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0) && v.z > 0.0 && v.z < 1.0;
 	const uint waveMask = WaveActiveBallot(isInView).x;
-	const uint volumeVis = (waveMask >> wTid.y) & 0xff;
+	const uint volumeVis = (waveMask >> (8 * wTid.y)) & 0xff;
 	//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
 
 	// Viewport-visibility culling

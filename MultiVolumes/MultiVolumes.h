@@ -100,11 +100,9 @@ private:
 	uint32_t m_numVolumes;
 	std::wstring m_volumeFiles[10];
 	std::wstring m_radianceFile;
-	std::wstring m_irradianceFile;
 	std::string m_meshFileName;
 	XMFLOAT4 m_volPosScale;
 	XMFLOAT4 m_meshPosScale;
-	float m_lightMapScale;
 	XMVECTORF32 m_clearColor;
 
 	void LoadPipeline();

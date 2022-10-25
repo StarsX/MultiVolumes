@@ -32,7 +32,7 @@ min16float4 GetSampleNU(uint i, float3 uvw)
 // Screen-space ray marching casting
 //--------------------------------------------------------------------------------------
 min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
-	uint volTexId, uint sampleCount, matrix worldViewProjI, float4x3 localToLight)
+	uint volumeId, uint volTexId, uint sampleCount, matrix worldViewProjI)
 {
 	if (!ComputeRayOrigin(rayOrigin, rayDir)) return 0.0;
 
@@ -52,6 +52,7 @@ min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
 
 	float t = 0.0;
 	min16float step = stepScale;
+	float prevDensity = 0.0;
 	for (uint i = 0; i < sampleCount; ++i)
 	{
 		const float3 pos = rayOrigin + rayDir * t;
@@ -60,37 +61,50 @@ min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
 
 		// Get a sample
 		min16float4 color = GetSampleNU(volTexId, uvw);
+		min16float newStep = stepScale;
+		float dDensity = 1.0;
 
 		// Skip empty space
 		if (color.w > ZERO_THRESHOLD)
 		{
 			// Sample light
-			const float3 light = GetLight(pos, localToLight);
+			const float3 light = GetLight(volumeId, pos);
+
+			// Update step
+			dDensity = color.w - prevDensity;
+			const min16float opacity = saturate(color.w * step);
+			newStep = GetStep(dDensity, transm, opacity, stepScale);
+			step = (step + newStep) * 0.5;
+			prevDensity = color.w;
 
 			// Accumulate color
-			color.w = GetOpacity(color.w, step);
-			color.xyz *= transm;
+			const min16float tansl = GetTranslucency(color.w, step);
+			color.w = saturate(color.w * step);
 #ifdef _PRE_MULTIPLIED_
 			color.xyz = GetPremultiplied(color.xyz, step);
 #else
+			//color.xyz *= color.w;
 			color.xyz *= color.w;
 #endif
+			color.xyz *= transm;
 
 			//scatter += color.xyz;
-			scatter += min16float3(light) * color.xyz;
+			scatter += color.xyz * min16float3(light);
 
 			// Attenuate ray-throughput
-			transm *= 1.0 - color.w;
+			transm *= 1.0 - tansl;
 			if (transm < ZERO_THRESHOLD) break;
 		}
 
 		// Update position along ray
-		step = GetStep(transm, color.w, stepScale);
+		step = newStep;
 		t += step;
 #ifdef _HAS_DEPTH_MAP_
 		if (t > tMax) break;
 #endif
 	}
+
+	scatter /= 2.0 * PI;
 
 	//return min16float4(scatter * min16float3(1.0, 0.1.xx), 1.0 - transm); // Red mark
 	return min16float4(scatter, 1.0 - transm);

@@ -357,6 +357,12 @@ bool ObjectRenderer::createInputLayout()
 
 bool ObjectRenderer::createPipelineLayouts()
 {
+	const Sampler* pSamplers[] =
+	{
+		m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_LESS_EQUAL),
+		m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_WRAP)
+	};
+
 	// Depth pass
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
@@ -367,12 +373,6 @@ bool ObjectRenderer::createPipelineLayouts()
 
 	// Base pass
 	{
-		const Sampler samplers[] =
-		{
-			m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_LESS_EQUAL),
-			m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_WRAP)
-		};
-
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(0, 0, 0, Shader::Stage::VS);
 		pipelineLayout->SetRootCBV(1, 0, 0, Shader::Stage::PS);
@@ -380,7 +380,7 @@ bool ObjectRenderer::createPipelineLayouts()
 		pipelineLayout->SetConstants(3, 1, 1, 0, Shader::Stage::PS);
 		pipelineLayout->SetRootSRV(4, 1, 0, DescriptorFlag::NONE, Shader::Stage::PS);
 		pipelineLayout->SetRange(5, DescriptorType::SRV, 1, 2);
-		pipelineLayout->SetStaticSamplers(samplers, static_cast<uint32_t>(size(samplers)), 0, 0, Shader::PS);
+		pipelineLayout->SetStaticSamplers(pSamplers, static_cast<uint32_t>(size(pSamplers)), 0, 0, Shader::PS);
 		pipelineLayout->SetShaderStage(0, Shader::Stage::VS);
 		pipelineLayout->SetShaderStage(1, Shader::Stage::PS);
 		pipelineLayout->SetShaderStage(2, Shader::Stage::PS);
@@ -395,7 +395,7 @@ bool ObjectRenderer::createPipelineLayouts()
 		pipelineLayout->SetRange(0, DescriptorType::UAV, 1, 0, 0,
 			DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(1, DescriptorType::SRV, 3, 0);
-		pipelineLayout->SetStaticSamplers(&m_descriptorTableCache->GetSampler(SamplerPreset::LINEAR_WRAP), 1, 0);
+		pipelineLayout->SetStaticSamplers(&pSamplers[1], 1, 0);
 		XUSG_X_RETURN(m_pipelineLayouts[TEMPORAL_AA], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
 			PipelineLayoutFlag::NONE, L"TemporalAALayout"), false);
 	}

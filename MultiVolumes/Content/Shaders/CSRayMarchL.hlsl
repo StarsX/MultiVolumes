@@ -7,10 +7,12 @@
 //--------------------------------------------------------------------------------------
 // Buffers and textures
 //--------------------------------------------------------------------------------------
-RWTexture3D<float3> g_rwLightMap;
+RWTexture3D<float3> g_rwLightMaps[];
 
 StructuredBuffer<PerObject>		g_roPerObject	: register (t0);
 StructuredBuffer<VolumeDesc>	g_roVolumes		: register (t1);
+StructuredBuffer<uint>		g_roVisibleVolumes	: register (t2);
+StructuredBuffer<uint>	g_roVisibleVolumeCount	: register (t3);
 
 //--------------------------------------------------------------------------------------
 // Compute Shader
@@ -19,16 +21,30 @@ StructuredBuffer<VolumeDesc>	g_roVolumes		: register (t1);
 void main(uint3 DTid : SV_DispatchThreadID)
 {
 	float3 gridSize;
-	g_rwLightMap.GetDimensions(gridSize.x, gridSize.y, gridSize.z);
+	g_rwLightMaps[0].GetDimensions(gridSize.x, gridSize.y, gridSize.z);
 
 	uint2 structInfo;
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
+
+	const uint visibleVolumeCount = g_roVisibleVolumeCount[0];
+	uint volumeId = g_roVisibleVolumes[g_frameIdx % visibleVolumeCount];
+	//uint volumeId = g_frameIdx % structInfo.x;
+	volumeId = WaveReadLaneAt(volumeId, 0);
 
 	float4 rayOrigin;
 	rayOrigin.xyz = (DTid + 0.5) / gridSize * 2.0 - 1.0;
 	rayOrigin.w = 1.0;
 
-	rayOrigin.xyz = mul(rayOrigin, g_lightMapWorld);	// Light-map space to world space
+	// Identify if the current position is nonempty
+	uint volTexId = GetSourceTextureId(g_roVolumes[volumeId]);
+	const float3 uvw = LocalToTex3DSpace(rayOrigin.xyz);
+	//volTexId = WaveReadLaneAt(volTexId, 0);
+
+	const PerObject perObject = g_roPerObject[volumeId];
+	const min16float density = GetSample(volTexId, uvw).w;
+	const bool hasDensity = density >= ZERO_THRESHOLD;
+
+	rayOrigin.xyz = mul(rayOrigin, perObject.World);	// Light-map space to world space
 
 #ifdef _HAS_SHADOW_MAP_
 	min16float shadow = ShadowTest(rayOrigin.xyz, g_txDepth);
@@ -41,46 +57,27 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	float3 irradiance = 0.0;
 #endif
 
-	// Find the volume of which the current position is nonempty
-	bool hasDensity = false;
-	float3 uvw = 0.0;
-	PerObject perObject;
-	uint volTexId = 0;
-	for (uint n = 0; n < structInfo.x; ++n)
-	{
-		perObject = g_roPerObject[n];
-		const float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
-
-		if (all(abs(localRayOrigin) <= 1.0))
-		{
-			volTexId = GetSourceTextureId(g_roVolumes[n]);
-			uvw = LocalToTex3DSpace(localRayOrigin);
-			//volTexId = WaveReadLaneFirst(volTexId);
-
-			const min16float density = GetSample(volTexId, uvw).w;
-			hasDensity = density >= ZERO_THRESHOLD;
-
-			if (hasDensity) break;
-		}
-	}
-
 	if (hasDensity)
 	{
 		float3 aoRayDir = 0.0;
 #ifdef _HAS_LIGHT_PROBE_
-		if (g_hasLightProbes)
+		if (g_hasLightProbe)
 		{
 			float3 shCoeffs[SH_NUM_COEFF];
 			LoadSH(shCoeffs, g_roSHCoeffs);
 			aoRayDir = -GetDensityGradient(volTexId, uvw);
 			aoRayDir = any(abs(aoRayDir) > 0.0) ? aoRayDir : rayOrigin.xyz; // Avoid 0-gradient caused by uniform density field
+			aoRayDir = mul(aoRayDir, (float3x3)perObject.World);
 			aoRayDir = normalize(aoRayDir);
-			irradiance = GetIrradiance(shCoeffs, mul(aoRayDir, (float3x3)perObject.World));
+			irradiance = GetIrradiance(shCoeffs, aoRayDir);
 		}
 #endif
 
-		for (n = 0; n < structInfo.x; ++n)
+		for (uint n = 0; n < structInfo.x; ++n)
 		{
+			uint volTexId = GetSourceTextureId(g_roVolumes[n]);
+			//volTexId = WaveReadLaneAt(volTexId, 0);
+
 			const PerObject perObject = g_roPerObject[n];
 			float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
 
@@ -95,54 +92,18 @@ void main(uint3 DTid : SV_DispatchThreadID)
 #endif
 				// Transmittance
 				if (!ComputeRayOrigin(localRayOrigin, rayDir)) continue;
-				uint volTexId = GetSourceTextureId(g_roVolumes[n]);
-				//volTexId = WaveReadLaneFirst(volTexId);
-
-				float t = g_stepScale;
-				min16float step = g_stepScale;
-				for (uint i = 0; i < g_numSamples; ++i)
-				{
-					const float3 pos = localRayOrigin + rayDir * t;
-					if (any(abs(pos) > 1.0)) break;
-					const float3 uvw = LocalToTex3DSpace(pos);
-
-					// Get a sample along light ray
-					const min16float density = GetSample(volTexId, uvw).w;
-
-					// Attenuate ray-throughput along light direction
-					const min16float opacity = GetOpacity(density, step);
-					shadow *= 1.0 - opacity;
-					if (shadow < ZERO_THRESHOLD) break;
-
-					// Update position along light ray
-					step = GetStep(shadow, opacity, g_stepScale);
-					t += step;
-				}
+				CastLightRay(shadow, volTexId, localRayOrigin, rayDir, g_step, g_numSamples);
 			}
 
 #ifdef _HAS_LIGHT_PROBE_
-			if (g_hasLightProbes)
+			if (g_hasLightProbe)
 			{
-				float t = g_stepScale;
-				min16float step = g_stepScale;
-				for (uint i = 0; i < g_numSamples; ++i)
-				{
-					const float3 pos = localRayOrigin.xyz + aoRayDir * t;
-					if (any(abs(pos) > 1.0)) break;
-					const float3 uvw = LocalToTex3DSpace(pos);
+				const float3 rayDir = normalize(mul(aoRayDir, (float3x3)perObject.WorldI));
+				if (!ComputeRayOrigin(localRayOrigin, rayDir)) continue;
 
-					// Get a sample along light ray
-					const min16float density = GetSample(volTexId, uvw).w;
-
-					// Attenuate ray-throughput along light direction
-					const min16float opacity = GetOpacity(density, step);
-					ao *= 1.0 - opacity;
-					if (ao < ZERO_THRESHOLD) break;
-
-					// Update position along light ray
-					step = GetStep(ao, opacity, g_stepScale);
-					t += step;
-				}
+				min16float transm = 1.0;
+				CastLightRay(transm, volTexId, localRayOrigin, rayDir, g_step, g_numSamples);
+				ao *= n == volumeId ? transm : pow(saturate(transm + 0.5), 0.25);
 			}
 #endif
 		}
@@ -152,8 +113,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	min16float3 ambient = min16float3(g_ambient.xyz * g_ambient.w);
 
 #ifdef _HAS_LIGHT_PROBE_
-	ambient = g_hasLightProbes ? min16float3(irradiance) * ao : ambient;
+	ambient = g_hasLightProbe ? ao * min16float3(irradiance) : ambient;
 #endif
 
-	g_rwLightMap[DTid] = lightColor * shadow + ambient;
+	g_rwLightMaps[volumeId][DTid] = shadow * lightColor + ambient;
 }

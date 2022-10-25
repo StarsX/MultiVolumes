@@ -23,8 +23,6 @@ const auto g_backFormat = Format::B8G8R8A8_UNORM;
 const auto g_rtFormat = Format::R16G16B16A16_FLOAT;
 const auto g_dsFormat = Format::D32_FLOAT;
 
-static auto g_updateLight = true;
-
 MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
@@ -35,16 +33,14 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_isPaused(false),
 	m_tracking(false),
 	m_gridSize(128),
-	m_lightGridSize(512),
+	m_lightGridSize(96),
 	m_maxRaySamples(256),
-	m_maxLightSamples(128),
+	m_maxLightSamples(96),
 	m_numVolumes(2),
-	m_radianceFile(L""),
-	m_irradianceFile(L""),
+	m_radianceFile(L"Assets/LA_Radiance.dds"),
 	m_meshFileName("Assets/bunny.obj"),
 	m_volPosScale(0.0f, 0.0f, 0.0f, 10.0f),
-	m_meshPosScale(0.0f, -10.0f, 0.0f, 1.5f),
-	m_lightMapScale(32.0f)
+	m_meshPosScale(0.0f, -9.0f, 0.0f, 1.8f)
 {
 #if defined (_DEBUG)
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -194,7 +190,6 @@ void MultiVolumes::LoadAssets()
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
-	m_rayCaster->SetLightMapWorld(m_lightMapScale * 2.0f, XMFLOAT3(0.0f, 0.0f, 0.0f));
 	m_rayCaster->SetMaxSamples(m_maxRaySamples, m_maxLightSamples);
 
 	if (m_volumeFiles->empty())
@@ -312,7 +307,7 @@ void MultiVolumes::OnUpdate()
 	const XMFLOAT3 lightPt(75.0f, 75.0f, -75.0f);
 	const XMFLOAT3 lightColor(1.0f, 0.7f, 0.3f);
 	const XMFLOAT3 ambientColor(0.4f, 0.6f, 1.0f);
-	const auto lightIntensity = 2.0f, ambientIntensity = 0.4f;
+	const auto lightIntensity = 3.0f * XM_PI, ambientIntensity = 2.0f * XM_PI;
 	m_objectRenderer->SetLight(lightPt, lightColor, lightIntensity);
 	m_objectRenderer->SetAmbient(ambientColor, ambientIntensity);
 	m_rayCaster->SetLight(lightPt, lightColor, lightIntensity);
@@ -432,7 +427,6 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		break;
 	case 'M':
 		m_showMesh = !m_showMesh;
-		g_updateLight = true;
 		break;
 	case 'O':
 		auto inc = (m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT == MultiRayCaster::OIT_RAY_QUERY &&
@@ -545,11 +539,6 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.z);
 			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_volPosScale.w);
 		}
-		else if (_wcsnicmp(argv[i], L"-lightMapScale", wcslen(argv[i])) == 0 ||
-			_wcsnicmp(argv[i], L"/lightMapScale", wcslen(argv[i])) == 0)
-		{
-			if (i + 1 < argc) i += swscanf_s(argv[i + 1], L"%f", &m_lightMapScale);
-		}
 		else if (_wcsnicmp(argv[i], L"-maxRaySamples", wcslen(argv[i])) == 0 ||
 			_wcsnicmp(argv[i], L"/maxRaySamples", wcslen(argv[i])) == 0)
 		{
@@ -603,7 +592,7 @@ void MultiVolumes::PopulateCommandList()
 	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
 	pCommandList->SetDescriptorPools(1, &descriptorPool);
 
-	if (g_updateLight) m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
+	m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
 
 	ResourceBarrier barriers[4];
 	const auto pColor = m_objectRenderer->GetRenderTarget(ObjectRenderer::RT_COLOR);
@@ -632,8 +621,7 @@ void MultiVolumes::PopulateCommandList()
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
 	if (m_lightProbe) m_lightProbe->RenderEnvironment(pCommandList, m_frameIndex);
-	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, g_updateLight, m_oitMethod);
-	g_updateLight = false;
+	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, m_oitMethod);
 
 	m_objectRenderer->Postprocess(pCommandList, m_renderTargets[m_frameIndex].get());
 	

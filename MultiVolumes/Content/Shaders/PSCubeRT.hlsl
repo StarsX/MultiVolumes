@@ -75,8 +75,8 @@ float4 main(PSIn input) : SV_TARGET
 	min16float4 dst;
 #if _ADAPTIVE_RAYMARCH_
 	if (input.SmpCnt > 0)
-		dst = RayCast(index, xy, localSpaceEyePt, normalize(rayDir), input.TexId,
-			input.SmpCnt, perObject.WorldViewProjI, perObject.ToLightSpace);
+		dst = RayCast(index, xy, localSpaceEyePt, normalize(rayDir), input.VolId,
+			input.TexId, input.SmpCnt, perObject.WorldViewProjI);
 	else
 #endif
 		dst = CubeCast(index, input.UVW, input.LPt, rayDir, input.SrvId);
@@ -114,8 +114,8 @@ float4 main(PSIn input) : SV_TARGET
 			if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT))
 			{
 				const PerObject perObject = g_roPerObject[volumeId];
-				src = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeInfo.VolTexId,
-					volumeInfo.SmpCount, perObject.WorldViewProjI, perObject.ToLightSpace);
+				src = RayCast(index, xy, rayOrigin, normalize(rayDir), volumeId, 
+					volumeInfo.VolTexId, volumeInfo.SmpCount, perObject.WorldViewProjI);
 			}
 			else
 #endif

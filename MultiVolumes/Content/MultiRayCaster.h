@@ -42,17 +42,13 @@ public:
 	void SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples);
 	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);
 	void SetVolumeWorld(uint32_t i, float size, const DirectX::XMFLOAT3& pos);
-	void SetLightMapWorld(float size, const DirectX::XMFLOAT3& pos);
 	void SetLight(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& color, float intensity);
 	void SetAmbient(const DirectX::XMFLOAT3& color, float intensity);
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj,
 		const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
 	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex,
-		XUSG::RenderTarget* pColorOut, bool updateLight, OITMethod oitMethod = OIT_K_BUFFER);
-	void RayMarchL(const XUSG::CommandList* pCommandList, uint8_t frameIndex);
-
-	const XUSG::DescriptorTable& GetLightSRVTable() const;
-	XUSG::Resource* GetLightMap() const;
+		XUSG::RenderTarget* pColorOut, OITMethod oitMethod = OIT_K_BUFFER);
+	void RayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	static const uint8_t FrameCount = 3;
 
@@ -176,7 +172,7 @@ protected:
 	std::vector<XUSG::Texture3D::uptr>	m_volumes;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeMaps;
 	std::vector<XUSG::Texture2D::uptr>	m_cubeDepths;
-	XUSG::Texture3D::uptr	m_lightMap;
+	std::vector<XUSG::Texture3D::uptr>	m_lightMaps;
 	XUSG::Texture::uptr		m_kDepths;
 	XUSG::Texture::uptr		m_kColors;
 	XUSG::ConstantBuffer::uptr m_cbPerFrame;
@@ -193,18 +189,18 @@ protected:
 	XUSG::StructuredBuffer::sptr	m_coeffSH;
 	XUSG::DepthStencil::uptr m_depth;
 
-	XUSG::Resource::uptr		m_scratch;
-	XUSG::Resource::uptr		m_instances;
+	XUSG::Resource::uptr	m_scratch;
+	XUSG::Resource::uptr	m_instances;
 
 	uint32_t				m_gridSize;
 	uint32_t				m_lightGridSize;
 	uint32_t				m_maxRaySamples;
 	uint32_t				m_maxLightSamples;
+	uint32_t				m_frameIdx;
 
 	DirectX::XMFLOAT3		m_lightPt;
 	DirectX::XMFLOAT4		m_lightColor;
 	DirectX::XMFLOAT4		m_ambient;
-	DirectX::XMFLOAT3X4		m_lightMapWorld;
 	std::vector<DirectX::XMFLOAT3X4> m_volumeWorlds;
 
 	DirectX::XMUINT2		m_viewport;

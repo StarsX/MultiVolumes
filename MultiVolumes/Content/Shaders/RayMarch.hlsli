@@ -8,7 +8,7 @@
 #include "SHIrradiance.hlsli"
 #endif
 
-#define ABSORPTION			1.0
+#define ABSORPTION			0.6
 #define ZERO_THRESHOLD		0.01
 #define ONE_THRESHOLD		0.99
 
@@ -16,16 +16,16 @@
 // Constants
 //--------------------------------------------------------------------------------------
 static const min16float g_maxDist = 2.0 * sqrt(3.0);
-static const min16float g_stepScale = g_maxDist / min16float(g_numSamples);
+static const min16float g_step = g_maxDist / min16float(g_numSamples);
 
 //--------------------------------------------------------------------------------------
 // Textures
 //--------------------------------------------------------------------------------------
-Texture3D<float3> g_txLightMap	: register (t3);
-Texture3D<float4> g_txGrids[]	: register (t0, space1);
+Texture3D<float3> g_txLightMaps[]	: register (t3);
+Texture3D<float4> g_txGrids[]		: register (t0, space1);
 
 #ifdef _HAS_DEPTH_MAP_
-Texture2D<float> g_txDepth		: register (t0, space2);
+Texture2D<float> g_txDepth			: register (t0, space2);
 #endif
 
 #if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
@@ -35,10 +35,13 @@ StructuredBuffer<float3> g_roSHCoeffs : register (t1, space2);
 //--------------------------------------------------------------------------------------
 // Sample density field
 //--------------------------------------------------------------------------------------
-min16float4 GetSample(uint i, float3 uvw)
+min16float4 GetSample(uint volumeId, float3 uvw, float mip = 0.0)
 {
-	min16float4 color = min16float4(g_txGrids[i].SampleLevel(g_smpLinear, uvw, 0.0));
+	min16float4 color = min16float4(g_txGrids[volumeId].SampleLevel(g_smpLinear, uvw, mip));
 	//min16float4 color = min16float4(0.0, 0.5, 1.0, 0.5);
+#ifdef _PRE_MULTIPLIED_
+	color.xyz *= DENSITY_SCALE;
+#endif
 	color.w *= DENSITY_SCALE;
 
 	return color;
@@ -72,11 +75,11 @@ float3 GetDensityGradient(uint i, float3 uvw)
 }
 
 //--------------------------------------------------------------------------------------
-// Get opacity
+// Get translucency
 //--------------------------------------------------------------------------------------
-min16float GetOpacity(min16float density, min16float stepScale)
+min16float GetTranslucency(min16float density, min16float step)
 {
-	return saturate(density * stepScale * ABSORPTION * 4.0);
+	return saturate(density * step * ABSORPTION);
 }
 
 //--------------------------------------------------------------------------------------
@@ -85,7 +88,7 @@ min16float GetOpacity(min16float density, min16float stepScale)
 #ifdef _PRE_MULTIPLIED_
 min16float3 GetPremultiplied(min16float3 color, min16float stepScale)
 {
-	return color * saturate(stepScale * ABSORPTION * 4.0);
+	return color * saturate(stepScale * ABSORPTION);
 }
 #endif
 
@@ -126,7 +129,7 @@ min16float ShadowTest(float3 pos, Texture2D<float> txDepth)
 #if defined(_HAS_LIGHT_PROBE_) && !defined(_LIGHT_PASS_)
 float3 GetIrradiance(float3 shCoeffs[SH_NUM_COEFF], float3 dir)
 {
-	return EvaluateSHIrradiance(shCoeffs, normalize(dir));
+	return EvaluateSHIrradiance(shCoeffs, normalize(dir)).xyz;
 }
 #endif
 
@@ -177,21 +180,62 @@ float3 LocalToTex3DSpace(float3 pos)
 //--------------------------------------------------------------------------------------
 // Get step
 //--------------------------------------------------------------------------------------
-min16float GetStep(min16float transm, min16float opacity, min16float stepScale)
+min16float GetStep(float dDensity, min16float transm, min16float opacity, min16float step)
 {
-	min16float step = max((1.0 - transm) * 2.0, 0.8) * stepScale;
-	step *= clamp(1.0 - opacity * 4.0, 0.5, 2.0);
+#if 1
+	step *= min16float(clamp(0.5 / abs(dDensity), 1.0, 1.25));
+	step *= max((1.0 - transm) * 2.0, 1.0);
+	step *= max((1.0 - opacity) * 1.25, 1.0);
+#endif
 
 	return step;
 }
 
 //--------------------------------------------------------------------------------------
+// Cast light ray
+//--------------------------------------------------------------------------------------
+void CastLightRay(inout min16float transm, uint volumeId, float3 rayOrigin, float3 rayDir,
+	min16float stepScale, uint numSamples, uint mipLevel = 0)
+{
+	const float mip = mipLevel;
+	numSamples >>= mipLevel;
+
+	float t = stepScale;
+	min16float step = stepScale;
+	float prevDensity = 0.0;
+	for (uint i = 0; i < numSamples; ++i)
+	{
+		const float3 pos = rayOrigin + rayDir * t;
+		if (any(abs(pos) > 1.0)) break;
+		const float3 uvw = LocalToTex3DSpace(pos);
+
+		// Get a sample along light ray
+		const min16float density = GetSample(volumeId, uvw, mip).w;
+
+		// Update step
+		const float dDensity = density - prevDensity;
+		const min16float opacity = saturate(density * step);
+		const min16float newStep = GetStep(dDensity, transm, opacity, stepScale);
+		step = (step + newStep) * 0.5;
+		prevDensity = density;
+
+		// Attenuate ray-throughput along light direction
+		const min16float tansl = GetTranslucency(density, step);
+		transm *= 1.0 - tansl;
+		if (transm < ZERO_THRESHOLD) break;
+
+		// Update position along light ray
+		step = newStep;
+		t += step;
+	}
+}
+
+//--------------------------------------------------------------------------------------
 // Get light
 //--------------------------------------------------------------------------------------
-float3 GetLight(float3 pos, float4x3 localToLight)
+float3 GetLight(uint volumeId, float3 pos)
 {
-	pos = mul(float4(pos, 1.0), localToLight);
 	const float3 uvw = pos * 0.5 + 0.5;
 
-	return g_txLightMap.SampleLevel(g_smpLinear, uvw, 0.0);
+	return g_txLightMaps[volumeId].SampleLevel(g_smpLinear, uvw, 0.0);
 }
