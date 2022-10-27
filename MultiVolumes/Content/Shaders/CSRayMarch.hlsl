@@ -79,19 +79,19 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 {
 	uint volumeId = g_roVisibleVolumes[Gid.z];
 	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
-	volumeInfo.MaskBits = WaveReadLaneFirst(volumeInfo.MaskBits);
+	volumeInfo.MaskBits = WaveReadLaneAt(volumeInfo.MaskBits, 0);
 
 #if _ADAPTIVE_RAYMARCH_
 	if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)) return;
 #endif
 	if ((volumeInfo.MaskBits & (1 << GTid.z)) == 0) return;
 
-	//volumeId = WaveReadLaneFirst(volumeId);
+	//volumeId = WaveReadLaneAt(volumeId, 0);
 	const PerObject perObject = g_roPerObject[volumeId];
 	float3 rayOrigin = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 
-	//volumeInfo.MipLevel = WaveReadLaneFirst(volumeInfo.MipLevel);
-	volumeInfo.SmpCount = WaveReadLaneFirst(volumeInfo.SmpCount);
+	//volumeInfo.MipLevel = WaveReadLaneAt(volumeInfo.MipLevel, 0);
+	volumeInfo.SmpCount = WaveReadLaneAt(volumeInfo.SmpCount, 0);
 	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
 	const float3 rayDir = normalize(target - rayOrigin);
@@ -106,7 +106,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	const float tMax = GetTMax(pos, rayOrigin, rayDir, perObject.WorldViewProjI);
 #endif
 
-	volumeInfo.VolTexId = WaveReadLaneFirst(volumeInfo.VolTexId);
+	volumeInfo.VolTexId = WaveReadLaneAt(volumeInfo.VolTexId, 0);
 	const min16float stepScale = g_maxDist / min16float(volumeInfo.SmpCount);
 
 	// Transmittance
