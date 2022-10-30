@@ -142,8 +142,8 @@ void MultiVolumes::LoadPipeline()
 			(L"CommandAllocator" + to_wstring(n)).c_str()), ThrowIfFailed(E_FAIL));
 	}
 
-	// Create descriptor table cache.
-	m_descriptorTableCache = DescriptorTableCache::MakeShared(m_device.get(), L"DescriptorTableCache");
+	// Create descriptor-table lib.
+	m_descriptorTableLib = DescriptorTableLib::MakeShared(m_device.get(), L"DescriptorTableLib");
 }
 
 // Load the sample assets.
@@ -166,17 +166,17 @@ void MultiVolumes::LoadAssets()
 	m_clearColor.f[3] = 0.0f;
 
 	vector<Resource::uptr> uploaders(0);
-	m_descriptorTableCache->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);
+	m_descriptorTableLib->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);
 
 	if (!m_radianceFile.empty())
 	{
 		XUSG_X_RETURN(m_lightProbe, make_unique<LightProbe>(), ThrowIfFailed(E_FAIL));
-		XUSG_N_RETURN(m_lightProbe->Init(pCommandList, m_descriptorTableCache, uploaders,
+		XUSG_N_RETURN(m_lightProbe->Init(pCommandList, m_descriptorTableLib, uploaders,
 			m_radianceFile.c_str(), g_rtFormat, g_dsFormat), ThrowIfFailed(E_FAIL));
 	}
 
 	XUSG_X_RETURN(m_objectRenderer, make_unique<ObjectRenderer>(), ThrowIfFailed(E_FAIL));
-	XUSG_N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_descriptorTableCache, uploaders,
+	XUSG_N_RETURN(m_objectRenderer->Init(m_commandList.get(), m_descriptorTableLib, uploaders,
 		m_meshFileName.c_str(), g_backFormat, g_rtFormat, g_dsFormat, m_meshPosScale), ThrowIfFailed(E_FAIL));
 
 	const auto numVolumeSrcs = static_cast<uint32_t>(size(m_volumeFiles));
@@ -184,7 +184,7 @@ void MultiVolumes::LoadAssets()
 	GeometryBuffer geometry;
 	m_rayCaster = make_unique<MultiRayCaster>();
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
-	if (!m_rayCaster->Init(pCommandList, m_descriptorTableCache, g_rtFormat, g_dsFormat,
+	if (!m_rayCaster->Init(pCommandList, m_descriptorTableLib, g_rtFormat, g_dsFormat,
 		m_gridSize, m_lightGridSize, m_numVolumes, numVolumeSrcs, uploaders,
 		&geometry, m_dxrSupport)) ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
@@ -363,7 +363,7 @@ void MultiVolumes::OnWindowSizeChanged(int width, int height)
 		m_renderTargets[n].reset();
 		m_fenceValues[n] = m_fenceValues[m_frameIndex];
 	}
-	m_descriptorTableCache->ResetDescriptorPool(CBV_SRV_UAV_POOL);
+	m_descriptorTableLib->ResetDescriptorPool(CBV_SRV_UAV_POOL);
 	//m_descriptorTableCache->ResetDescriptorPool(RTV_POOL);
 
 	// Determine the render target size in pixels.
@@ -589,7 +589,7 @@ void MultiVolumes::PopulateCommandList()
 		}
 	}
 
-	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	const auto descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
 	pCommandList->SetDescriptorPools(1, &descriptorPool);
 
 	m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
@@ -602,7 +602,7 @@ void MultiVolumes::PopulateCommandList()
 	auto numBarriers = pColor->SetBarrier(barriers, ResourceState::RENDER_TARGET);
 	numBarriers = pVelocity->SetBarrier(barriers, ResourceState::RENDER_TARGET, numBarriers);
 	numBarriers = pDepth->SetBarrier(barriers, ResourceState::DEPTH_WRITE, numBarriers);
-	numBarriers = pShadow->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = pShadow->SetBarrier(barriers, ResourceState::SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Clear render targets

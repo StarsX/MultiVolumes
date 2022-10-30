@@ -28,7 +28,7 @@ public:
 	MultiRayCaster();
 	virtual ~MultiRayCaster();
 
-	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
+	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableLib::sptr& descriptorTableLib,
 		XUSG::Format rtFormat, XUSG::Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders, XUSG::RayTracing::GeometryBuffer* pGeometry,
 		uint8_t rtSupport);
@@ -151,12 +151,12 @@ protected:
 	XUSG::RayTracing::ShaderTable::uptr	m_hitGroupShaderTable;
 	XUSG::RayTracing::ShaderTable::uptr	m_rayGenShaderTable;
 
-	XUSG::ShaderPool::uptr				m_shaderPool;
-	XUSG::RayTracing::PipelineCache::uptr m_rayTracingPipelineCache;
-	XUSG::Graphics::PipelineCache::uptr	m_graphicsPipelineCache;
-	XUSG::Compute::PipelineCache::uptr	m_computePipelineCache;
-	XUSG::PipelineLayoutCache::uptr		m_pipelineLayoutCache;
-	XUSG::DescriptorTableCache::sptr	m_descriptorTableCache;
+	XUSG::ShaderLib::uptr				m_shaderLib;
+	XUSG::RayTracing::PipelineLib::uptr m_rayTracingPipelineLib;
+	XUSG::Graphics::PipelineLib::uptr	m_graphicsPipelineLib;
+	XUSG::Compute::PipelineLib::uptr	m_computePipelineLib;
+	XUSG::PipelineLayoutLib::uptr		m_pipelineLayoutLib;
+	XUSG::DescriptorTableLib::sptr		m_descriptorTableLib;
 
 	XUSG::PipelineLayout	m_pipelineLayouts[NUM_PIPELINE];
 	XUSG::Pipeline			m_pipelines[NUM_PIPELINE];
