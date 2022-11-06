@@ -1192,7 +1192,7 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 6);
 	auto numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::RESET_SRC_STATE);
-	m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
+	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
 		numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::RESET_SRC_STATE);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
