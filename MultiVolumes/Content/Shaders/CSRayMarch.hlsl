@@ -95,19 +95,20 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
 	const float3 rayDir = normalize(target - rayOrigin);
-	const bool isHit = ComputeRayOrigin(rayOrigin, rayDir);
-	if (!isHit) return;
+	if (!ComputeRayOrigin(rayOrigin, rayDir)) return;
+
+	float tMax = ComputeTargetHit(rayOrigin, target, rayDir);
+	const min16float stepScale = g_maxDist / min16float(volumeInfo.SmpCount);
 
 	const uint3 index = uint3(DTid, GTid.z);
 #ifdef _HAS_DEPTH_MAP_
 	// Calculate occluded end point
 	const float3 pos = GetClipPos(rayOrigin, rayDir, perObject.WorldViewProj);
 	g_rwCubeDepths[uavIdx][index] = pos.z;
-	const float tMax = GetTMax(pos, rayOrigin, rayDir, perObject.WorldViewProjI);
+	tMax = GetTMax(pos, rayOrigin, rayDir, tMax, perObject.WorldViewProjI);
 #endif
 
 	volumeInfo.VolTexId = WaveReadLaneAt(volumeInfo.VolTexId, 0);
-	const min16float stepScale = g_maxDist / min16float(volumeInfo.SmpCount);
 
 	// Transmittance
 	min16float transm = 1.0;
@@ -164,9 +165,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 		// Update position along ray
 		step = newStep;
 		t += step;
-#ifdef _HAS_DEPTH_MAP_
 		if (t > tMax) break;
-#endif
 	}
 
 	scatter.xyz /= 2.0 * PI;

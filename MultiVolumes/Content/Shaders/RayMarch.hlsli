@@ -107,6 +107,11 @@ float GetTMax(float3 pos, float3 rayOrigin, float3 rayDir, matrix worldViewProjI
 	return max(max(t.x, t.y), t.z);
 }
 
+float GetTMax(float3 pos, float3 rayOrigin, float3 rayDir, float tMax, matrix worldViewProjI)
+{
+	return min(GetTMax(pos, rayOrigin, rayDir, worldViewProjI), tMax);
+}
+
 //--------------------------------------------------------------------------------------
 // Get occluded end point
 //--------------------------------------------------------------------------------------
@@ -163,6 +168,16 @@ bool ComputeRayOrigin(inout float3 rayOrigin, float3 rayDir)
 	rayOrigin = clamp(rayDir * U + rayOrigin, -1.0, 1.0);
 
 	return isHit;
+}
+
+//--------------------------------------------------------------------------------------
+// Compute the end point of the ray
+//--------------------------------------------------------------------------------------
+float ComputeTargetHit(float3 rayOrigin, float3 target, float3 rayDir)
+{
+	const float3 u = (target - rayOrigin) / rayDir;
+
+	return max(max(u.x, u.y), u.z);
 }
 
 //--------------------------------------------------------------------------------------
