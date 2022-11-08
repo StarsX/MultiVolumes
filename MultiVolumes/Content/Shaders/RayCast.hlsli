@@ -19,13 +19,23 @@ float3 GetClipPos(uint2 idx, float2 xy)
 //--------------------------------------------------------------------------------------
 // Sample density field
 //--------------------------------------------------------------------------------------
-min16float4 GetSampleNU(uint i, float3 uvw)
+min16float4 GetSampleNU(uint volumeId, float3 uvw)
 {
-	min16float4 color = min16float4(g_txGrids[NonUniformResourceIndex(i)].SampleLevel(g_smpLinear, uvw, 0.0));
+	min16float4 color = min16float4(g_txGrids[NonUniformResourceIndex(volumeId)].SampleLevel(g_smpLinear, uvw, 0.0));
 	//min16float4 color = min16float4(0.0, 0.5, 1.0, 0.5);
 	color.w *= DENSITY_SCALE;
 
 	return color;
+}
+
+//--------------------------------------------------------------------------------------
+// Get light
+//--------------------------------------------------------------------------------------
+float3 GetLightNU(uint volumeId, float3 pos)
+{
+	const float3 uvw = pos * 0.5 + 0.5;
+
+	return g_txLightMaps[NonUniformResourceIndex(volumeId)].SampleLevel(g_smpLinear, uvw, 0.0);
 }
 
 //--------------------------------------------------------------------------------------
@@ -68,7 +78,7 @@ min16float4 RayCast(uint2 idx, float2 xy, float3 rayOrigin, float3 rayDir,
 		if (color.w > ZERO_THRESHOLD)
 		{
 			// Sample light
-			const float3 light = GetLight(volumeId, pos);
+			const float3 light = GetLightNU(volumeId, pos);
 
 			// Update step
 			dDensity = color.w - prevDensity;
