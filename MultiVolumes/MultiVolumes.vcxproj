@@ -169,7 +169,6 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
     <None Include="Content\Shaders\RayCast.hlsli" />
     <None Include="Content\Shaders\RayMarch.hlsli" />
     <None Include="Content\Shaders\VolumeCull.hlsli" />
-    <None Include="XUSG\Shaders\CubeMap.hlsli" />
     <None Include="XUSG\Shaders\SHIrradiance.hlsli" />
     <None Include="XUSG\Shaders\SHIrradianceTypeless.hlsli" />
   </ItemGroup>
