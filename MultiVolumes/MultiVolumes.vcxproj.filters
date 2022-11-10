@@ -99,9 +99,6 @@
     <ClInclude Include="XUSG\Advanced\XUSGHalton.h">
       <Filter>XUSG</Filter>
     </ClInclude>
-    <ClInclude Include="XUSG\Advanced\XUSGSHSharedConsts.h">
-      <Filter>XUSG</Filter>
-    </ClInclude>
     <ClInclude Include="XUSG\Advanced\XUSGSphericalHarmonics.h">
       <Filter>XUSG</Filter>
     </ClInclude>
