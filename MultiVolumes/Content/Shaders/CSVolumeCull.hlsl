@@ -5,6 +5,8 @@
 #include "Common.hlsli"
 #include "VolumeCull.hlsli"
 
+AppendStructuredBuffer<uint> g_rwCubeMapVolumes;
+
 //--------------------------------------------------------------------------------------
 // Estimate visible pixels of the cube map
 //--------------------------------------------------------------------------------------
@@ -69,10 +71,17 @@ void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
 	{
 		// Visible pixels of the cube map
 		const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
-		const uint maskBits = cubeMapPix <= projCov ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
+		const bool useCubeMap = cubeMapPix <= projCov;
+		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
 
 		const uint volTexId = GetSourceTextureId(volumeIn);
 		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
+#if _ADAPTIVE_RAYMARCH_
+		if (useCubeMap) g_rwCubeMapVolumes.Append(volumeId);
+#else
+		g_rwCubeMapVolumes.Append(volumeId);
+#endif
+			
 	}
 }

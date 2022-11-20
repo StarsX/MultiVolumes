@@ -81,9 +81,6 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	volumeInfo.MaskBits = WaveReadLaneAt(volumeInfo.MaskBits, 0);
 
-#if _ADAPTIVE_RAYMARCH_
-	if (!(volumeInfo.MaskBits & CUBEMAP_RAYMARCH_BIT)) return;
-#endif
 	if ((volumeInfo.MaskBits & (1 << GTid.z)) == 0) return;
 
 	//volumeId = WaveReadLaneAt(volumeId, 0);
