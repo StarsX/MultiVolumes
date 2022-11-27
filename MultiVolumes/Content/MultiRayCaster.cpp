@@ -177,8 +177,8 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		XUSG_X_RETURN(m_srvTables[SRV_TABLE_FILE_SRC], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
 	}
 
-	const auto descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
-	pCommandList->SetDescriptorPools(1, &descriptorPool);
+	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
+	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 	ResourceBarrier barrier;
 	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
@@ -231,8 +231,8 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 
 void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
 {
-	const auto descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
-	pCommandList->SetDescriptorPools(1, &descriptorPool);
+	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
+	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 	ResourceBarrier barrier;
 	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
@@ -1105,7 +1105,7 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 
 	// Get descriptor pool and create descriptor tables
 	XUSG_N_RETURN(createDescriptorTables(nullptr), false);
-	const auto& descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	const auto& descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 
 	// Set instance
 	vector<float*> transforms(numVolumes);
@@ -1116,10 +1116,10 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 	TopLevelAS::SetInstances(pDevice, m_instances.get(), numVolumes, pBottomLevelASs.data(), transforms.data());
 
 	// Build bottom level ASs
-	m_bottomLevelAS->Build(pCommandList, m_scratch.get(), descriptorPool);
+	m_bottomLevelAS->Build(pCommandList, m_scratch.get(), descriptorHeap);
 
 	// Build top level AS
-	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(), descriptorPool);
+	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(), descriptorHeap);
 
 	return true;
 }

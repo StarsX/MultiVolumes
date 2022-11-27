@@ -166,7 +166,7 @@ void MultiVolumes::LoadAssets()
 	m_clearColor.f[3] = 0.0f;
 
 	vector<Resource::uptr> uploaders(0);
-	m_descriptorTableLib->AllocateDescriptorPool(CBV_SRV_UAV_POOL, 600, 0);
+	m_descriptorTableLib->AllocateDescriptorHeap(CBV_SRV_UAV_HEAP, 600);
 
 	if (!m_radianceFile.empty())
 	{
@@ -226,7 +226,7 @@ void MultiVolumes::LoadAssets()
 	}
 
 	// Create window size dependent resources.
-	//m_descriptorTableCache->ResetDescriptorPool(CBV_SRV_UAV_POOL, 0);
+	//m_descriptorTableCache->ResetDescriptorPool(CBV_SRV_UAV_HEAP, 0);
 	CreateResources();
 
 	// Projection
@@ -363,8 +363,8 @@ void MultiVolumes::OnWindowSizeChanged(int width, int height)
 		m_renderTargets[n].reset();
 		m_fenceValues[n] = m_fenceValues[m_frameIndex];
 	}
-	m_descriptorTableLib->ResetDescriptorPool(CBV_SRV_UAV_POOL);
-	//m_descriptorTableCache->ResetDescriptorPool(RTV_POOL);
+	m_descriptorTableLib->ResetDescriptorHeap(CBV_SRV_UAV_HEAP);
+	//m_descriptorTableCache->ResetDescriptorHeap(RTV_HEAP);
 
 	// Determine the render target size in pixels.
 	m_width = (max)(width, 1);
@@ -577,6 +577,9 @@ void MultiVolumes::PopulateCommandList()
 	XUSG_N_RETURN(pCommandList->Reset(pCommandAllocator, nullptr), ThrowIfFailed(E_FAIL));
 
 	// Record commands.
+	const auto descriptorPool = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
+	pCommandList->SetDescriptorHeaps(1, &descriptorPool);
+
 	if (m_lightProbe)
 	{
 		static auto isFirstFrame = true;
@@ -588,9 +591,6 @@ void MultiVolumes::PopulateCommandList()
 			isFirstFrame = false;
 		}
 	}
-
-	const auto descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
-	pCommandList->SetDescriptorPools(1, &descriptorPool);
 
 	m_objectRenderer->RenderShadow(pCommandList, m_frameIndex, m_showMesh);
 
