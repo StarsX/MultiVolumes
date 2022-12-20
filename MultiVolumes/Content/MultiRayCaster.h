@@ -182,11 +182,11 @@ protected:
 	XUSG::StructuredBuffer::uptr m_visibleVolumes;
 	XUSG::StructuredBuffer::uptr m_cubeMapVolumes;
 	XUSG::StructuredBuffer::uptr m_counterReset;
+	XUSG::StructuredBuffer::sptr m_visibleVolumeCounter;
+	XUSG::StructuredBuffer::sptr m_cubeMapVolumeCounter;
 	XUSG::TypedBuffer::uptr m_volumeAttribs;
 	XUSG::RawBuffer::uptr	m_volumeDispatchArg;
 	XUSG::RawBuffer::uptr	m_volumeDrawArg;
-	XUSG::RawBuffer::sptr	m_visibleVolumeCounter;
-	XUSG::RawBuffer::sptr	m_cubeMapVolumeCounter;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	XUSG::StructuredBuffer::sptr	m_coeffSH;

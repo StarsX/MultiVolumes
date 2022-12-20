@@ -467,8 +467,8 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 	}
 
 	{
-		m_visibleVolumeCounter = RawBuffer::MakeShared();
-		XUSG_N_RETURN(m_visibleVolumeCounter->Create(pDevice, sizeof(uint32_t),
+		m_visibleVolumeCounter = StructuredBuffer::MakeShared();
+		XUSG_N_RETURN(m_visibleVolumeCounter->Create(pDevice, 1, sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
 			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeCounter"), false);
 
@@ -478,8 +478,8 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
 			1, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumes"), false);
 
-		m_cubeMapVolumeCounter = RawBuffer::MakeShared();
-		XUSG_N_RETURN(m_cubeMapVolumeCounter->Create(pDevice, sizeof(uint32_t),
+		m_cubeMapVolumeCounter = StructuredBuffer::MakeShared();
+		XUSG_N_RETURN(m_cubeMapVolumeCounter->Create(pDevice, 1, sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
 			0, nullptr, MemoryFlag::NONE, L"RayCaster.CubeMapVolumeCounter"), false);
 
