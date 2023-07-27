@@ -81,7 +81,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	volumeInfo.MaskBits = WaveReadLaneAt(volumeInfo.MaskBits, 0);
 
-	if ((volumeInfo.MaskBits & (1 << GTid.z)) == 0) return;
+	if ((volumeInfo.MaskBits & (1u << GTid.z)) == 0) return;
 
 	//volumeId = WaveReadLaneAt(volumeId, 0);
 	const PerObject perObject = g_roPerObject[volumeId];

@@ -28,6 +28,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	DXFramework(width, height, name),
 	m_frameIndex(0),
 	m_oitMethod(MultiRayCaster::OIT_RAY_QUERY),
+	m_useWorkGraph(false),
 	m_animate(false),
 	m_showMesh(false),
 	m_showFPS(true),
@@ -110,7 +111,7 @@ void MultiVolumes::LoadPipeline()
 	{
 		dxgiAdapter = nullptr;
 		ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
-		EnableDirectXRaytracing(dxgiAdapter.get());
+		EnableDirectXRaytracingAndWorkGraph(dxgiAdapter.get());
 
 		m_device = RayTracing::Device::MakeUnique();
 		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
@@ -188,7 +189,7 @@ void MultiVolumes::LoadAssets()
 	if (!m_rayCaster) ThrowIfFailed(E_FAIL);
 	if (!m_rayCaster->Init(pCommandList, m_descriptorTableLib, g_rtFormat, g_dsFormat,
 		m_gridSize, m_lightGridSize, m_numVolumes, numVolumeSrcs, uploaders,
-		&geometry, m_dxrSupport)) ThrowIfFailed(E_FAIL);
+		&geometry, m_dxrSupport, m_workGraphSupport)) ThrowIfFailed(E_FAIL);
 	const auto volumeSize = m_volPosScale.w * 2.0f;
 	const auto volumePos = XMFLOAT3(m_volPosScale.x, m_volPosScale.y, m_volPosScale.z);
 	m_rayCaster->SetVolumesWorld(volumeSize, volumePos);
@@ -442,6 +443,9 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		m_oitMethod = static_cast<MultiRayCaster::OITMethod>((m_oitMethod + inc) % MultiRayCaster::OIT_METHOD_COUNT);
 		break;
 	}
+	case 'W':
+		m_useWorkGraph = m_workGraphSupport ? !m_useWorkGraph : false;
+		break;
 	}
 }
 
@@ -628,7 +632,7 @@ void MultiVolumes::PopulateCommandList()
 
 	m_objectRenderer->Render(pCommandList, m_frameIndex, m_showMesh);
 	if (m_lightProbe) m_lightProbe->RenderEnvironment(pCommandList, m_frameIndex);
-	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, m_oitMethod);
+	m_rayCaster->Render(pCommandList, m_frameIndex, pColor, m_oitMethod, m_useWorkGraph);
 
 	const auto pRenderTarget = m_renderTargets[m_frameIndex].get();
 	m_objectRenderer->Postprocess(pCommandList, pRenderTarget);
@@ -759,6 +763,8 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 			windowText << L"K-buffer OIT";
 		}
 
+		windowText << L"    [W] " << (m_useWorkGraph ? "Work graph" : "Execute indirect");
+
 		SetCustomWindowText(windowText.str().c_str());
 	}
 
@@ -769,30 +775,28 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 }
 
 //--------------------------------------------------------------------------------------
-// Ray tracing
+// Ray tracing and work graph
 //--------------------------------------------------------------------------------------
 
-// Enable experimental features required for compute-based raytracing fallback.
+// Enable experimental features required for compute-based raytracing fallback and work graph.
 // This will set active D3D12 devices to DEVICE_REMOVED state.
 // Returns bool whether the call succeeded and the device supports the feature.
-inline bool EnableComputeRaytracingFallback(IDXGIAdapter1* adapter)
+inline bool EnableExperimentalFeatures(IDXGIAdapter1* pAdapter)
 {
 	ComPtr<ID3D12Device> testDevice;
-	UUID experimentalFeatures[] = { D3D12ExperimentalShaderModels };
+	UUID experimentalFeatures[] = { D3D12ExperimentalShaderModels, D3D12StateObjectsExperiment };
 
-	return SUCCEEDED(D3D12EnableExperimentalFeatures(1, experimentalFeatures, nullptr, nullptr))
-		&& SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)));
+	return SUCCEEDED(D3D12EnableExperimentalFeatures(static_cast<uint32_t>(size(experimentalFeatures)), experimentalFeatures, nullptr, nullptr))
+		&& SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)));
 }
 
-// Returns bool whether the device supports DirectX Raytracing tier.
-inline uint8_t GetDirectXRaytracingSupportLevel(IDXGIAdapter1* adapter)
+// Returns uint8_t for the device supports DirectX Raytracing tier.
+inline uint8_t GetDirectXRaytracingSupportLevel(ID3D12Device* pDevice)
 {
-	ComPtr<ID3D12Device> testDevice;
 	D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureSupportData = {};
 
 	uint8_t dxrSupport = 0;
-	if (SUCCEEDED(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)))
-		&& SUCCEEDED(testDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData))))
+	if (SUCCEEDED(pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData))))
 	{
 		dxrSupport |= featureSupportData.RaytracingTier >= D3D12_RAYTRACING_TIER_1_0 ? MultiRayCaster::RT_PIPELINE : 0;
 		dxrSupport |= featureSupportData.RaytracingTier >= D3D12_RAYTRACING_TIER_1_1 ? MultiRayCaster::RT_INLINE : 0;
@@ -801,27 +805,49 @@ inline uint8_t GetDirectXRaytracingSupportLevel(IDXGIAdapter1* adapter)
 	return dxrSupport;
 }
 
-void MultiVolumes::EnableDirectXRaytracing(IDXGIAdapter1* adapter)
+// Returns bool whether the device supports DirectX work-graph tier.
+inline bool GetDirectXWorkGraphSupport(ID3D12Device* pDevice)
+{
+	D3D12_FEATURE_DATA_D3D12_OPTIONS_EXPERIMENTAL featureSupportData = {};
+
+	auto workGraphSupport = false;
+	if (SUCCEEDED(pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_EXPERIMENTAL, &featureSupportData, sizeof(featureSupportData))))
+		workGraphSupport = featureSupportData.WorkGraphsTier;
+
+	return workGraphSupport;
+}
+
+void MultiVolumes::EnableDirectXRaytracingAndWorkGraph(IDXGIAdapter1* pAdapter)
 {
 	// Fallback Layer uses an experimental feature and needs to be enabled before creating a D3D12 device.
-	bool isFallbackSupported = EnableComputeRaytracingFallback(adapter);
+	const auto isExperimentalFeaturesSupported = EnableExperimentalFeatures(pAdapter);
 
-	if (!isFallbackSupported)
+	if (!isExperimentalFeaturesSupported)
 	{
 		OutputDebugString(
 			L"Warning: Could not enable Compute Raytracing Fallback (D3D12EnableExperimentalFeatures() failed).\n" \
 			L"         Possible reasons: your OS is not in developer mode.\n\n");
 	}
 
-	m_dxrSupport = GetDirectXRaytracingSupportLevel(adapter);
+	ComPtr<ID3D12Device> testDevice;
+	if (SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice))))
+	{
+		m_dxrSupport = GetDirectXRaytracingSupportLevel(testDevice.Get());
+		m_workGraphSupport = GetDirectXWorkGraphSupport(testDevice.Get());
+	}
+	else
+	{
+		m_dxrSupport = 0;
+		m_workGraphSupport = false;
+	}
 
 	if (!m_dxrSupport)
 	{
 		OutputDebugString(L"Warning: DirectX Raytracing is not supported by your GPU and driver.\n\n");
 
-		if (!isFallbackSupported)
+		if (!isExperimentalFeaturesSupported)
 			OutputDebugString(L"Could not enable compute based fallback raytracing support (D3D12EnableExperimentalFeatures() failed).\n"\
 				L"Possible reasons: your OS is not in developer mode.\n\n");
-		ThrowIfFailed(isFallbackSupported ? S_OK : E_FAIL);
+		ThrowIfFailed(isExperimentalFeaturesSupported ? S_OK : E_FAIL);
 	}
 }

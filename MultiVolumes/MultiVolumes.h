@@ -60,6 +60,7 @@ private:
 	XUSG::CommandQueue::uptr		m_commandQueue;
 
 	uint8_t m_dxrSupport;
+	bool m_workGraphSupport;
 
 	XUSG::RayTracing::Device::uptr	m_device;
 	XUSG::RenderTarget::uptr		m_renderTargets[FrameCount];
@@ -82,6 +83,7 @@ private:
 
 	// Application state
 	MultiRayCaster::OITMethod m_oitMethod;
+	bool		m_useWorkGraph;
 	bool		m_animate;
 	bool		m_showMesh;
 	bool		m_showFPS;
@@ -122,5 +124,5 @@ private:
 	double CalculateFrameStats(float* fTimeStep = nullptr);
 
 	// Ray tracing
-	void EnableDirectXRaytracing(IDXGIAdapter1* adapter);
+	void EnableDirectXRaytracingAndWorkGraph(IDXGIAdapter1* pAdapter);
 };

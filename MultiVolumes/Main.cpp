@@ -11,6 +11,9 @@
 
 #include "MultiVolumes.h"
 
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 711; }
+extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\"; }
+
 _Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {

@@ -167,7 +167,6 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
   </ItemGroup>
   <ItemGroup>
     <None Include="Content\Shaders\PSCube.hlsli" />
-    <None Include="Content\Shaders\Random.hlsli" />
     <None Include="Content\Shaders\Common.hlsli" />
     <None Include="Content\Shaders\RayCast.hlsli" />
     <None Include="Content\Shaders\RayMarch.hlsli" />
@@ -227,6 +226,21 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
       <AllResourcesBound Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</AllResourcesBound>
       <AllResourcesBound Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</AllResourcesBound>
     </FxCompile>
+    <CustomBuild Include="Content\Shaders\LibRayMarch.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(ProjectDir)..\Bin\dxc.exe" -I "$(ProjectDir)Content" -I "$(ProjectDir)XUSG\Shaders" /Zi /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /auto-binding-space 0</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)%(Filename).cso</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)%(Filename).cso</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(ProjectDir)..\Bin\dxc.exe" -I "$(ProjectDir)Content" -I "$(ProjectDir)XUSG\Shaders" /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /auto-binding-space 0</Command>
+    </CustomBuild>
     <FxCompile Include="Content\Shaders\PSBasePass.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>

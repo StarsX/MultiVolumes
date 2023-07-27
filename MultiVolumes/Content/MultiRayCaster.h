@@ -31,7 +31,7 @@ public:
 	bool Init(XUSG::RayTracing::CommandList* pCommandList, const XUSG::DescriptorTableLib::sptr& descriptorTableLib,
 		XUSG::Format rtFormat, XUSG::Format dsFormat, uint32_t gridSize, uint32_t lightGridSize, uint32_t numVolumes,
 		uint32_t numVolumeSrcs, std::vector<XUSG::Resource::uptr>& uploaders, XUSG::RayTracing::GeometryBuffer* pGeometry,
-		uint8_t rtSupport);
+		uint8_t rtSupport, bool workGraphSupport);
 	bool LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 		const wchar_t* fileName, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool SetRenderTargets(const XUSG::Device* pDevice, const XUSG::RenderTarget* pColorOut, const XUSG::DepthStencil::uptr* depths);
@@ -47,7 +47,7 @@ public:
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj,
 		const DirectX::XMFLOAT4X4& shadowVP, const DirectX::XMFLOAT3& eyePt);
 	void Render(XUSG::RayTracing::CommandList* pCommandList, uint8_t frameIndex,
-		XUSG::RenderTarget* pColorOut, OITMethod oitMethod = OIT_K_BUFFER);
+		XUSG::RenderTarget* pColorOut, OITMethod oitMethod = OIT_K_BUFFER, bool useWorkGraph = false);
 
 	static const uint8_t FrameCount = 3;
 
@@ -59,6 +59,7 @@ protected:
 		VOLUME_CULL,
 		RAY_MARCH_L,
 		RAY_MARCH_V,
+		RAY_MARCH_WG,
 		CUBE_DEPTH_PEEL,
 		DEPTH_PASS,
 		RENDER_CUBE,
@@ -115,6 +116,18 @@ protected:
 		SHADOW_MAP
 	};
 
+	struct WorkGraphInfo
+	{
+		uint32_t Index;
+		uint32_t NumEntrypoints;
+		uint32_t NumNodes;
+		std::vector<uint32_t> EntrypointIndices;
+		std::vector<uint32_t> RecordByteSizes;
+		XUSG::ProgramIdentifier Identifier;
+		XUSG::RawBuffer::uptr BackingMemory;
+		XUSG::WorkGraph::MemoryRequirements MemRequirments;
+	};
+
 	bool createCubeVB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createCubeIB(XUSG::CommandList* pCommandList, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createVolumeInfoBuffers(XUSG::CommandList* pCommandList, uint32_t numVolumes,
@@ -126,10 +139,12 @@ protected:
 	bool buildAccelerationStructures(XUSG::RayTracing::CommandList* pCommandList,
 		XUSG::RayTracing::GeometryBuffer* pGeometries);
 	bool buildShaderTables(const XUSG::RayTracing::Device* pDevice);
+	bool initWorkGraph(const XUSG::Device* pDevice);
 
 	void cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void rayMarchWG(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
@@ -156,6 +171,7 @@ protected:
 	XUSG::RayTracing::PipelineLib::uptr m_rayTracingPipelineLib;
 	XUSG::Graphics::PipelineLib::uptr	m_graphicsPipelineLib;
 	XUSG::Compute::PipelineLib::uptr	m_computePipelineLib;
+	XUSG::WorkGraph::PipelineLib::uptr	m_workGraphPipelineLib;
 	XUSG::PipelineLayoutLib::uptr		m_pipelineLayoutLib;
 	XUSG::DescriptorTableLib::sptr		m_descriptorTableLib;
 
@@ -209,4 +225,7 @@ protected:
 	DirectX::XMUINT2		m_viewport;
 
 	uint8_t m_rtSupport;
+	bool m_workGraphSupport;
+
+	WorkGraphInfo m_rayMarchGraph;
 };
