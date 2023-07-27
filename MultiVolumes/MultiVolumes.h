@@ -49,7 +49,7 @@ public:
 
 private:
 	static const auto FrameCount = MultiRayCaster::FrameCount;
-	static_assert(FrameCount == ObjectRenderer::FrameCount, "VolumeRender::FrameCount should be equal to ObjectRenderer::FrameCount");
+	static_assert(FrameCount == ObjectRenderer::FrameCount, "MultiVolumes::FrameCount should be equal to ObjectRenderer::FrameCount");
 
 	XUSG::com_ptr<IDXGIFactory5>	m_factory;
 

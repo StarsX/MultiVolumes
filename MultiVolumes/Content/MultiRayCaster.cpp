@@ -12,6 +12,7 @@
 using namespace std;
 using namespace DirectX;
 using namespace XUSG;
+using namespace XUSG::Ultimate;
 using namespace XUSG::RayTracing;
 
 const wchar_t* MultiRayCaster::HitGroupName = L"hitGroup";
@@ -560,7 +561,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(1, DescriptorType::UAV, 3, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
-		pipelineLayout->SetRange(2, DescriptorType::SRV, 1, 1, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(2, DescriptorType::SRV, 1, 1, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetConstants(3, 1, 1);
 		XUSG_X_RETURN(m_pipelineLayouts[VOLUME_CULL], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
 			PipelineLayoutFlag::NONE, L"VolumeCullingLayout"), false);
@@ -571,7 +572,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRange(0, DescriptorType::CBV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
 		pipelineLayout->SetRange(0, DescriptorType::SRV, 1, 0, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetRange(1, DescriptorType::SRV, 3, 1, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetRange(1, DescriptorType::SRV, 3, 1, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(2, DescriptorType::UAV, static_cast<uint32_t>(m_lightMaps.size()),
 			0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 		pipelineLayout->SetRange(3, DescriptorType::SRV, numVolumeSrcs, 0, 1);
@@ -964,25 +965,25 @@ bool MultiRayCaster::createDescriptorTables(const Texture* pColorOut)
 
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, 1, &m_visibleVolumes->GetSRV());
+		const Descriptor descriptors[] =
+		{
+			m_visibleVolumes->GetSRV(),
+			m_volumeAttribs->GetSRV()
+		};
+		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
 		XUSG_X_RETURN(m_srvTables[SRV_TABLE_VIS_VOLUMES], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
+	}
+
+	{
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, 1, &m_cubeMapVolumes->GetSRV());
+		XUSG_X_RETURN(m_srvTables[SRV_TABLE_CUBE_VOLUMES], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
 	}
 
 	{
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, 1, &m_volumeAttribs->GetSRV());
 		XUSG_X_RETURN(m_srvTables[SRV_TABLE_VOLUME_ATTRIBS], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
-	}
-
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		const Descriptor descriptors[] =
-		{
-			m_cubeMapVolumes->GetSRV(),
-			m_volumeAttribs->GetSRV()
-		};
-		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		XUSG_X_RETURN(m_srvTables[SRV_TABLE_CUBE_VOLUMES], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
 	}
 
 	{
@@ -1077,7 +1078,6 @@ bool MultiRayCaster::createDescriptorTables(const Texture* pColorOut)
 
 bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pCommandList, GeometryBuffer* pGeometry)
 {
-	AccelerationStructure::SetFrameCount(FrameCount);
 	const auto pDevice = pCommandList->GetRTDevice();
 
 	// Set geometries
@@ -1117,6 +1117,9 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 
 	// Build bottom level ASs
 	m_bottomLevelAS->Build(pCommandList, m_scratch.get(), descriptorHeap);
+
+	const ResourceBarrier barrier = { nullptr, ResourceState::UNORDERED_ACCESS };
+	pCommandList->Barrier(1, &barrier);
 
 	// Build top level AS
 	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(), descriptorHeap);
@@ -1190,9 +1193,11 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + 1);
+	static vector<ResourceBarrier> barriers(m_lightMaps.size() + 3);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(),
 		ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE);
+	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_coeffSH->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& lightMap : m_lightMaps)
 		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
@@ -1229,11 +1234,11 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 
 	// Set barrier
 	numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT);
-	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
-	numBarriers = m_cubeMapVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = m_cubeMapVolumes->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
 	for (auto& lightMap : m_lightMaps)
-		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1393,7 +1398,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	// Set descriptor tables
 	pCommandList->SetGraphicsDescriptorTable(0, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
-	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetResult().get());
+	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetResource().get());
 	pCommandList->SetGraphicsDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
 	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);

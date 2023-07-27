@@ -168,7 +168,7 @@ void MultiVolumes::LoadAssets()
 	m_clearColor.f[3] = 0.0f;
 
 	vector<Resource::uptr> uploaders(0);
-	m_descriptorTableLib->AllocateDescriptorHeap(CBV_SRV_UAV_HEAP, 600);
+	m_descriptorTableLib->AllocateDescriptorHeap(CBV_SRV_UAV_HEAP, 1600);
 
 	if (!m_radianceFile.empty())
 	{
@@ -434,12 +434,14 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		m_showMesh = !m_showMesh;
 		break;
 	case 'O':
+	{
 		auto inc = (m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT == MultiRayCaster::OIT_RAY_QUERY &&
 			!(m_dxrSupport & MultiRayCaster::RT_INLINE) ? 2 : 1;
 		inc = (m_oitMethod + 1) % MultiRayCaster::OIT_METHOD_COUNT == MultiRayCaster::OIT_RAY_TRACING &&
 			!(m_dxrSupport & MultiRayCaster::RT_PIPELINE) ? 0 : inc;
 		m_oitMethod = static_cast<MultiRayCaster::OITMethod>((m_oitMethod + inc) % MultiRayCaster::OIT_METHOD_COUNT);
 		break;
+	}
 	}
 }
 
@@ -582,8 +584,8 @@ void MultiVolumes::PopulateCommandList()
 	XUSG_N_RETURN(pCommandList->Reset(pCommandAllocator, nullptr), ThrowIfFailed(E_FAIL));
 
 	// Record commands.
-	const auto descriptorPool = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
-	pCommandList->SetDescriptorHeaps(1, &descriptorPool);
+	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
+	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 	if (m_lightProbe)
 	{

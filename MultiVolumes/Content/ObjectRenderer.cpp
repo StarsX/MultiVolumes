@@ -68,7 +68,9 @@ bool ObjectRenderer::Init(CommandList* pCommandList, const DescriptorTableLib::s
 	if (!objLoader.Import(fileName, true, true)) return false;
 	XUSG_N_RETURN(createVB(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(), uploaders), false);
 	XUSG_N_RETURN(createIB(pCommandList, objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
-	m_sceneSize = objLoader.GetRadius() * posScale.w * 2.0f;
+	const auto& aabb = objLoader.GetAABB();
+	const XMFLOAT3 ext(aabb.Max.x - aabb.Min.x, aabb.Max.y - aabb.Min.y, aabb.Max.z - aabb.Min.z);
+	m_sceneSize = (max)(ext.x, (max)(ext.y, ext.z)) * posScale.w;
 
 	// Create resources
 	const auto smFormat = Format::D16_UNORM;
