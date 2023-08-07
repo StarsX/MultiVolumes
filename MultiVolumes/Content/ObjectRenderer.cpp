@@ -254,7 +254,7 @@ void ObjectRenderer::TemporalAA(CommandList* pCommandList)
 	ResourceBarrier barriers[4];
 	auto numBarriers = m_temporalViews[m_frameParity]->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
 	numBarriers = m_renderTargets[RT_COLOR]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
-	numBarriers = m_temporalViews[!m_frameParity]->SetBarrier(barriers, ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = m_temporalViews[!m_frameParity]->SetBarrier(barriers, ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_renderTargets[RT_VELOCITY]->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	//numBarriers = m_temporalViews[!m_frameParity]->SetBarrier(barriers, ResourceState::SHADER_RESOURCE,
 		//numBarriers, BARRIER_ALL_SUBRESOURCES, BarrierFlag::END_ONLY);
@@ -276,7 +276,7 @@ void ObjectRenderer::ToneMap(CommandList* pCommandList, RenderTarget* pColorOut)
 {
 	ResourceBarrier barriers[2];
 	auto numBarriers = pColorOut->SetBarrier(barriers, ResourceState::RENDER_TARGET);
-	numBarriers = m_temporalViews[m_frameParity]->SetBarrier(barriers, ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = m_temporalViews[m_frameParity]->SetBarrier(barriers, ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Set render target

@@ -822,6 +822,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 			m_rayMarchGraph.RecordByteSizes[i] = state->GetEntrypointRecordSizeInBytes(m_rayMarchGraph.Index, i);
 		}
 	}
+
 	XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::VS, vsIndex, L"VSCubeDP.cso"), false);
 
 	// Cube depth peeling
@@ -905,10 +906,10 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	if (m_rtSupport & RT_PIPELINE)
 	{
 		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::CS, csIndex, L"RTCube.cso"), false);
-		const void* shaders[] = { RaygenShaderName, ClosestHitShaderName, MissShaderName };
+		const wchar_t* shaderNames[] = { RaygenShaderName, ClosestHitShaderName, MissShaderName };
 
 		const auto state = RayTracing::State::MakeUnique();
-		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++), static_cast<uint32_t>(size(shaders)), shaders);
+		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++), static_cast<uint32_t>(size(shaderNames)), shaderNames);
 		state->SetHitGroup(0, HitGroupName, ClosestHitShaderName);
 		state->SetShaderConfig(sizeof(float[5]), sizeof(float[2]));
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_TRACING]);
@@ -1302,11 +1303,11 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 
 	// Set barrier
 	numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::INDIRECT_ARGUMENT);
-	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
-	numBarriers = m_cubeMapVolumes->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
-	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_cubeMapVolumes->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	for (auto& lightMap : m_lightMaps)
-		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
+		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1344,9 +1345,9 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::RESET_SRC_STATE);
 	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
 		numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::RESET_SRC_STATE);
-	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	for (auto& lightMap : m_lightMaps)
-		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::SHADER_RESOURCE, numBarriers);
+		numBarriers = lightMap->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1594,11 +1595,8 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
-	// Set pipeline state
-	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_TRACING]);
-	pCommandList->SetRayTracingPipeline(m_pipelines[RAY_TRACING]);
-
 	// Set descriptor tables
+	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_TRACING]);
 	pCommandList->SetTopLevelAccelerationStructure(0, m_topLevelAS.get());
 	pCommandList->SetComputeDescriptorTable(1, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetComputeDescriptorTable(2, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
@@ -1608,6 +1606,6 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
 
-	pCommandList->DispatchRays(m_viewport.x, m_viewport.y, 1, m_hitGroupShaderTable.get(),
-		m_missShaderTable.get(), m_rayGenShaderTable.get());
+	pCommandList->DispatchRays(m_pipelines[RAY_TRACING], m_viewport.x, m_viewport.y, 1,
+		m_rayGenShaderTable.get(), m_hitGroupShaderTable.get(), m_missShaderTable.get());
 }

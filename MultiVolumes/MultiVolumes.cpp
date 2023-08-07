@@ -613,7 +613,7 @@ void MultiVolumes::PopulateCommandList()
 	auto numBarriers = pColor->SetBarrier(barriers, ResourceState::RENDER_TARGET);
 	numBarriers = pVelocity->SetBarrier(barriers, ResourceState::RENDER_TARGET, numBarriers);
 	numBarriers = pDepth->SetBarrier(barriers, ResourceState::DEPTH_WRITE, numBarriers);
-	numBarriers = pShadow->SetBarrier(barriers, ResourceState::SHADER_RESOURCE, numBarriers);
+	numBarriers = pShadow->SetBarrier(barriers, ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Clear render targets
