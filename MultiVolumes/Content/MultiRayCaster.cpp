@@ -229,7 +229,7 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 	XUSG_N_RETURN(m_kColors->Create(pDevice, width, height, Format::R16G16B16A16_FLOAT, NUM_OIT_LAYERS,
 		ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, 1, false, MemoryFlag::NONE, L"ColorKBuffer"), false);
 
-	XUSG_N_RETURN(createDescriptorTables(pColorOut),false);
+	XUSG_N_RETURN(createDescriptorTables(pColorOut), false);
 
 	return true;
 }
