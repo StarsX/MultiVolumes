@@ -124,7 +124,7 @@ protected:
 		std::vector<uint32_t> EntrypointIndices;
 		std::vector<uint32_t> RecordByteSizes;
 		XUSG::ProgramIdentifier Identifier;
-		XUSG::RawBuffer::uptr BackingMemory;
+		XUSG::Buffer::uptr BackingMemory;
 		XUSG::WorkGraph::MemoryRequirements MemRequirments;
 	};
 
@@ -201,8 +201,8 @@ protected:
 	XUSG::StructuredBuffer::sptr m_visibleVolumeCounter;
 	XUSG::StructuredBuffer::sptr m_cubeMapVolumeCounter;
 	XUSG::TypedBuffer::uptr m_volumeAttribs;
-	XUSG::RawBuffer::uptr	m_volumeDispatchArg;
-	XUSG::RawBuffer::uptr	m_volumeDrawArg;
+	XUSG::Buffer::uptr	m_volumeDispatchArg;
+	XUSG::Buffer::uptr	m_volumeDrawArg;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	XUSG::StructuredBuffer::sptr	m_coeffSH;

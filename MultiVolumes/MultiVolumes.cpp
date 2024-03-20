@@ -163,7 +163,7 @@ void MultiVolumes::LoadAssets()
 
 	// Clear color setting
 	m_clearColor = { 0.2f, 0.2f, 0.2f, 0.0f };
-	m_clearColor = m_volumeFiles->empty() ? m_clearColor : DirectX::Colors::CornflowerBlue;
+	m_clearColor = m_volumeFiles->empty() ? m_clearColor : DirectX::Colors::Transparent;
 	m_clearColor.v = XMVectorPow(m_clearColor, XMVectorReplicate(1.0f / 1.25f));
 	m_clearColor.v = 0.7f * m_clearColor / (XMVectorReplicate(1.25f) - m_clearColor);
 	m_clearColor.f[3] = 0.0f;
@@ -778,18 +778,6 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 // Ray tracing and work graph
 //--------------------------------------------------------------------------------------
 
-// Enable experimental features required for compute-based raytracing fallback and work graph.
-// This will set active D3D12 devices to DEVICE_REMOVED state.
-// Returns bool whether the call succeeded and the device supports the feature.
-inline bool EnableExperimentalFeatures(IDXGIAdapter1* pAdapter)
-{
-	ComPtr<ID3D12Device> testDevice;
-	UUID experimentalFeatures[] = { D3D12ExperimentalShaderModels, D3D12StateObjectsExperiment };
-
-	return SUCCEEDED(D3D12EnableExperimentalFeatures(static_cast<uint32_t>(size(experimentalFeatures)), experimentalFeatures, nullptr, nullptr))
-		&& SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice)));
-}
-
 // Returns uint8_t for the device supports DirectX Raytracing tier.
 inline uint8_t GetDirectXRaytracingSupportLevel(ID3D12Device* pDevice)
 {
@@ -808,10 +796,10 @@ inline uint8_t GetDirectXRaytracingSupportLevel(ID3D12Device* pDevice)
 // Returns bool whether the device supports DirectX work-graph tier.
 inline bool GetDirectXWorkGraphSupport(ID3D12Device* pDevice)
 {
-	D3D12_FEATURE_DATA_D3D12_OPTIONS_EXPERIMENTAL featureSupportData = {};
+	D3D12_FEATURE_DATA_D3D12_OPTIONS21 featureSupportData = {};
 
 	auto workGraphSupport = false;
-	if (SUCCEEDED(pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS_EXPERIMENTAL, &featureSupportData, sizeof(featureSupportData))))
+	if (SUCCEEDED(pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &featureSupportData, sizeof(featureSupportData))))
 		workGraphSupport = featureSupportData.WorkGraphsTier;
 
 	return workGraphSupport;
@@ -819,16 +807,6 @@ inline bool GetDirectXWorkGraphSupport(ID3D12Device* pDevice)
 
 void MultiVolumes::EnableDirectXRaytracingAndWorkGraph(IDXGIAdapter1* pAdapter)
 {
-	// Fallback Layer uses an experimental feature and needs to be enabled before creating a D3D12 device.
-	const auto isExperimentalFeaturesSupported = EnableExperimentalFeatures(pAdapter);
-
-	if (!isExperimentalFeaturesSupported)
-	{
-		OutputDebugString(
-			L"Warning: Could not enable Compute Raytracing Fallback (D3D12EnableExperimentalFeatures() failed).\n" \
-			L"         Possible reasons: your OS is not in developer mode.\n\n");
-	}
-
 	ComPtr<ID3D12Device> testDevice;
 	if (SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&testDevice))))
 	{
@@ -842,12 +820,5 @@ void MultiVolumes::EnableDirectXRaytracingAndWorkGraph(IDXGIAdapter1* pAdapter)
 	}
 
 	if (!m_dxrSupport)
-	{
 		OutputDebugString(L"Warning: DirectX Raytracing is not supported by your GPU and driver.\n\n");
-
-		if (!isExperimentalFeaturesSupported)
-			OutputDebugString(L"Could not enable compute based fallback raytracing support (D3D12EnableExperimentalFeatures() failed).\n"\
-				L"Possible reasons: your OS is not in developer mode.\n\n");
-		ThrowIfFailed(isExperimentalFeaturesSupported ? S_OK : E_FAIL);
-	}
 }

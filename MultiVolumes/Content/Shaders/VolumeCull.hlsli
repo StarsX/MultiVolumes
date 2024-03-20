@@ -228,10 +228,11 @@ float EstimateProjCoverage(float4 edgePair, uint2 wTid, uint faceMask, uint base
 	// Per face processing
 	if (wTid.x < 6)
 	{
+		uint i;
 		float2 e[4];
 
 		[unroll]
-		for (uint i = 0; i < 4; ++i)
+		for (i = 0; i < 4; ++i)
 			e[i] = GetCubeFaceEdges(edgePair, wTid.x, i, baseLaneId);
 
 		float faceArea = 0.0;
