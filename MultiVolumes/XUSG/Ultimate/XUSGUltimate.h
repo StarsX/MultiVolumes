@@ -273,11 +273,13 @@ namespace XUSG
 			virtual ~State() {}
 
 			virtual void SetShaderLibrary(uint32_t index, const Blob& shaderLib,
-				uint32_t numShaders = 0, const /*wchar_t**/void** pShaders = nullptr) = 0;	// pShaders - shader names for DX12
-			virtual void SetProgram(const /*wchar_t*/void* program) = 0;					// program - program name for DX12
+				uint32_t numShaders = 0, const wchar_t** pShaderNames = nullptr) = 0;
+			virtual void SetProgram(const wchar_t* programName) = 0;
 			virtual void SetLocalPipelineLayout(uint32_t index, const PipelineLayout& layout,
-				uint32_t numShaders, const /*wchar_t**/void** pShaders) = 0;				// pShaders - shader names for DX12
+				uint32_t numShaders, const wchar_t** pShaderNames) = 0;
 			virtual void SetGlobalPipelineLayout(const PipelineLayout& layout) = 0;
+			virtual void OverrideDispatchGrid(uint32_t x, uint32_t y, uint32_t z, const wchar_t* shaderName) = 0;
+			virtual void OverrideMaxDispatchGrid(uint32_t x, uint32_t y, uint32_t z, const wchar_t* shaderName) = 0;
 
 			virtual Pipeline CreatePipeline(PipelineLib* pPipelineLib, const wchar_t* name = nullptr) = 0;
 			virtual Pipeline GetPipeline(PipelineLib* pPipelineLib, const wchar_t* name = nullptr) = 0;

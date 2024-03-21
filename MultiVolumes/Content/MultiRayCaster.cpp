@@ -801,11 +801,11 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	{
 		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::CS, csIndex, L"LibRayMarch.cso"), false);
 		static const wchar_t* workGraphName = L"RayMarchGraph";
-		static const wchar_t* shaders[] = { L"VolumeCull", L"RayMarch" };
+		static const wchar_t* shaderNames[] = { L"VolumeCull", L"RayMarch" };
 
 		const auto state = WorkGraph::State::MakeUnique();
 		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++),
-			static_cast<uint32_t>(size(shaders)), reinterpret_cast<const void**>(shaders));
+			static_cast<uint32_t>(size(shaderNames)), shaderNames);
 		state->SetProgram(workGraphName);
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
 		XUSG_X_RETURN(m_pipelines[RAY_MARCH_WG], state->GetPipeline(m_workGraphPipelineLib.get(), L"RayMarchingGraph"), false);
@@ -819,7 +819,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		m_rayMarchGraph.RecordByteSizes.resize(m_rayMarchGraph.NumEntrypoints);
 		for (auto i = 0u; i < m_rayMarchGraph.NumEntrypoints; ++i)
 		{
-			m_rayMarchGraph.EntrypointIndices[i] = i;//state->GetEntrypointIndex(m_rayMarchGraph.Index, { shaders[0], 0 });
+			m_rayMarchGraph.EntrypointIndices[i] = i;//state->GetEntrypointIndex(m_rayMarchGraph.Index, { shaderNames[0], 0 });
 			m_rayMarchGraph.RecordByteSizes[i] = state->GetEntrypointRecordSizeInBytes(m_rayMarchGraph.Index, i);
 		}
 	}

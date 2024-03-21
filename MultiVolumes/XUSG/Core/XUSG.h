@@ -19,6 +19,7 @@
 
 #define XUSG_APPEND_ALIGNED_ELEMENT		0xffffffff
 #define XUSG_BARRIER_ALL_SUBRESOURCES	0xffffffff
+#define XUSG_DESCRIPTOR_OFFSET_APPEND	0xffffffff
 
 #define XUSG_DEF_ENUM_FLAG_OPERATORS(ENUMTYPE) \
 extern "C++" \
@@ -2078,7 +2079,8 @@ namespace XUSG
 
 			virtual void SetShaderStage(uint32_t index, Shader::Stage stage) = 0;
 			virtual void SetRange(uint32_t index, DescriptorType type, uint32_t num, uint32_t baseBinding,
-				uint32_t space = 0, DescriptorFlag flags = DescriptorFlag::NONE) = 0;
+				uint32_t space = 0, DescriptorFlag flags = DescriptorFlag::NONE,
+				uint32_t offsetInDescriptors = XUSG_DESCRIPTOR_OFFSET_APPEND) = 0;
 			virtual void SetConstants(uint32_t index, uint32_t num32BitValues, uint32_t binding,
 				uint32_t space = 0, Shader::Stage stage = Shader::Stage::ALL) = 0;
 			virtual void SetRootSRV(uint32_t index, uint32_t binding, uint32_t space = 0,
