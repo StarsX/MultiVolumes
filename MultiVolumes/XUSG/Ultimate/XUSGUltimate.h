@@ -278,6 +278,7 @@ namespace XUSG
 			virtual void SetLocalPipelineLayout(uint32_t index, const PipelineLayout& layout,
 				uint32_t numShaders, const wchar_t** pShaderNames) = 0;
 			virtual void SetGlobalPipelineLayout(const PipelineLayout& layout) = 0;
+			virtual void SetNodeMask(uint32_t nodeMask) = 0;
 			virtual void OverrideDispatchGrid(uint32_t x, uint32_t y, uint32_t z, const wchar_t* shaderName) = 0;
 			virtual void OverrideMaxDispatchGrid(uint32_t x, uint32_t y, uint32_t z, const wchar_t* shaderName) = 0;
 

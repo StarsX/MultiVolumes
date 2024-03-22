@@ -223,10 +223,10 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </EntryPointName>
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Vd /Zi /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0 /Qembed_debug</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Zi /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0 /Qembed_debug</Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)%(Filename).cso</Outputs>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)%(Filename).cso</Outputs>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Vd /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0</Command>
     </CustomBuild>
     <FxCompile Include="Content\Shaders\PSBasePass.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
