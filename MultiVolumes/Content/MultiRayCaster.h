@@ -37,7 +37,7 @@ public:
 	bool SetRenderTargets(const XUSG::Device* pDevice, const XUSG::RenderTarget* pColorOut, const XUSG::DepthStencil::uptr* depths);
 	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const XUSG::Texture* pColorOut);
 
-	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
+	void InitVolumeData(XUSG::CommandList* pCommandList, uint32_t i);
 	void SetSH(const XUSG::StructuredBuffer::sptr& coeffSH);
 	void SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples);
 	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);

@@ -103,8 +103,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	{
 		m_volumes[i] = Texture3D::MakeUnique();
 		XUSG_N_RETURN(m_volumes[i]->Create(pDevice, gridSize, gridSize, gridSize, Format::R16G16B16A16_FLOAT,
-			ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::ALLOW_SIMULTANEOUS_ACCESS, 1,
-			MemoryFlag::NONE, (L"Volume" + to_wstring(i)).c_str()), false);
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, MemoryFlag::NONE, (L"Volume" + to_wstring(i)).c_str()), false);
 	}
 
 	m_cubeMaps.resize(numVolumes);
@@ -187,7 +186,8 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 	ResourceBarrier barrier;
-	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	pCommandList->Barrier(numBarriers, &barrier);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[LOAD_VOLUME_DATA]);
@@ -199,6 +199,9 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4));
+
+	numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::ALL_SHADER_RESOURCE);
+	pCommandList->Barrier(numBarriers, &barrier);
 
 	return true;
 }
@@ -235,13 +238,14 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 	return true;
 }
 
-void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
+void MultiRayCaster::InitVolumeData(XUSG::CommandList* pCommandList, uint32_t i)
 {
 	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
 	ResourceBarrier barrier;
-	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	pCommandList->Barrier(numBarriers, &barrier);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[INIT_VOLUME_DATA]);
@@ -252,6 +256,9 @@ void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint3
 
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4));
+
+	numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::ALL_SHADER_RESOURCE);
+	pCommandList->Barrier(numBarriers, &barrier);
 }
 
 void MultiRayCaster::SetSH(const StructuredBuffer::sptr& coeffSH)
