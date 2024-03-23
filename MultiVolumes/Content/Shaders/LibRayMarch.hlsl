@@ -36,10 +36,10 @@ float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSiz
 //--------------------------------------------------------------------------------------
 [Shader("node")]
 [NodeLaunch("broadcasting")]
-[NodeMaxDispatchGrid(64, 1, 1)]
-[NumThreads(8, GROUP_VOLUME_COUNT, 1)]
+[NodeDispatchGrid(1, 1, 1)]
+[numthreads(8, GROUP_VOLUME_COUNT, 1)]
 void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
-	DispatchNodeInputRecord<VolumeCullRecord> input,
+	//DispatchNodeInputRecord<VolumeCullRecord> input,
 	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarch)
 {
 	uint2 structInfo;
@@ -199,7 +199,7 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 [Shader("node")]
 [NodeLaunch("broadcasting")]
 [NodeMaxDispatchGrid(128, 256, 1)]
-[NumThreads(8, 4, 6)]
+[numthreads(8, 4, 6)]
 void RayMarch(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
 	DispatchNodeInputRecord<RayMarchRecord> input)
 {

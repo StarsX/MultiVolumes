@@ -803,11 +803,15 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		static const wchar_t* workGraphName = L"RayMarchGraph";
 		static const wchar_t* shaderNames[] = { L"VolumeCull", L"RayMarch" };
 
+		const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
+		const uint32_t dispatchGrid = XUSG_DIV_UP(numVolumes, GROUP_VOLUME_COUNT);
+
 		const auto state = WorkGraph::State::MakeUnique();
 		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++),
 			static_cast<uint32_t>(size(shaderNames)), shaderNames);
 		state->SetProgram(workGraphName);
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
+		state->OverrideDispatchGrid(shaderNames[0], dispatchGrid, 1, 1, WorkGraph::BoolOverride::IS_TRUE);
 		XUSG_X_RETURN(m_pipelines[RAY_MARCH_WG], state->GetPipeline(m_workGraphPipelineLib.get(), L"RayMarchingGraph"), false);
 
 		m_rayMarchGraph.Index = state->GetWorkGraphIndex(workGraphName);
@@ -1336,12 +1340,15 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 5);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_DEST);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Reset counter
 	pCommandList->CopyResource(m_visibleVolumeCounter.get(), m_counterReset.get());
+
+	static auto isFirstFrame = true;
+	const auto workGraphFlag = isFirstFrame ? WorkGraphFlag::INITIALIZE : WorkGraphFlag::NONE;
 
 	// Set barriers
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
@@ -1355,24 +1362,11 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers.data());
-
-	// Set pipeline state
-	static auto isFirstFrame = true;
-	assert(m_rayMarchGraph.BackingMemory->GetWidth() >= m_rayMarchGraph.MemRequirments.MinByteSize);
 	if (isFirstFrame)
-	{
 		numBarriers = m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
-			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-		pCommandList->Barrier(numBarriers, barriers.data());
-		pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, WorkGraphFlag::INITIALIZE,
-			m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MinByteSize);
-		//numBarriers = m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
-		//pCommandList->Barrier(numBarriers, barriers.data());
-		isFirstFrame = false;
-	}
-	else pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, WorkGraphFlag::NONE,
-		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MinByteSize);
+			numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+	isFirstFrame = false;
+	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Set descriptor tables
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
@@ -1386,9 +1380,12 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetCompute32BitConstant(8, m_maxRaySamples);
 
+	// Set pipeline state
+	assert(m_rayMarchGraph.BackingMemory->GetWidth() >= m_rayMarchGraph.MemRequirments.MinByteSize);
+	pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, workGraphFlag,
+		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MinByteSize);
+
 	// Dispatch work graph
-	const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
-	const uint32_t disPatchGrid[] = { XUSG_DIV_UP(numVolumes, GROUP_VOLUME_COUNT) };
 	static vector<vector<uint8_t>> inputData(m_rayMarchGraph.NumEntrypoints);
 	static vector<NodeCPUInput> nodeInputs(m_rayMarchGraph.NumEntrypoints);
 	for (auto i = 0u; i < m_rayMarchGraph.NumEntrypoints; ++i)
@@ -1404,7 +1401,7 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 		if (sizeRecords > 0)
 		{
 			records.resize(sizeRecords);
-			memcpy(records.data(), disPatchGrid, sizeof(disPatchGrid));
+			// Copy input record data ...
 			nodeInput.pRecords = records.data();
 		}
 	}
