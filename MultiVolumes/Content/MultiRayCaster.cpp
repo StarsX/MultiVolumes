@@ -1263,9 +1263,9 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 
 bool MultiRayCaster::initWorkGraph(const XUSG::Device* pDevice)
 {
-	const auto& backingMemSize = m_rayMarchGraph.MemRequirments.MaxByteSize;
+	const auto& backingMemSize = m_rayMarchGraph.MemRequirments.MinByteSize;
 	m_rayMarchGraph.BackingMemory = Buffer::MakeUnique();
-	XUSG_N_RETURN(m_rayMarchGraph.BackingMemory->Create(pDevice, backingMemSize * 2,
+	XUSG_N_RETURN(m_rayMarchGraph.BackingMemory->Create(pDevice, backingMemSize,
 		ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::DENY_SHADER_RESOURCE,
 		MemoryType::DEFAULT, 0, nullptr, 0, nullptr, MemoryFlag::NONE,
 		L"WorkGraph.BackingMemory"), false);
@@ -1347,7 +1347,7 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 5);
+	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_DEST);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
@@ -1368,7 +1368,7 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
+	//numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	if (isFirstFrame)
 		numBarriers = m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
 			numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
