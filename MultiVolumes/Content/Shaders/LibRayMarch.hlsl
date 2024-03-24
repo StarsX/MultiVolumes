@@ -10,7 +10,7 @@
 
 struct VolumeCullRecord
 {
-	uint DispatchGrid : SV_DispatchGrid;
+	uint BaseVolumeId;
 };
 
 struct RayMarchRecord
@@ -39,7 +39,7 @@ float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSiz
 [NodeDispatchGrid(1, 1, 1)]
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
 void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
-	//DispatchNodeInputRecord<VolumeCullRecord> input,
+	DispatchNodeInputRecord<VolumeCullRecord> input,
 	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarch)
 {
 	uint2 structInfo;
