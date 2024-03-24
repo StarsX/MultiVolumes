@@ -33,6 +33,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_showMesh(false),
 	m_showFPS(true),
 	m_isPaused(false),
+	m_useWarpDevice(false),
 	m_tracking(false),
 	m_gridSize(128),
 	m_lightGridSize(96),
@@ -113,12 +114,14 @@ void MultiVolumes::LoadPipeline()
 		ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
 		EnableDirectXRaytracingAndWorkGraph(dxgiAdapter.get());
 
+		dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
+		if (m_useWarpDevice && dxgiAdapterDesc.DeviceId != 0x8c) continue;
+
 		m_device = RayTracing::Device::MakeUnique();
 		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
 		XUSG_N_RETURN(m_device->CreateInterface(createDeviceFlags), ThrowIfFailed(E_FAIL));
 	}
 
-	dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
 	if (dxgiAdapterDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
 		m_title += dxgiAdapterDesc.VendorId == 0x1414 && dxgiAdapterDesc.DeviceId == 0x8c ? L" (WARP)" : L" (Software)";
 	ThrowIfFailed(hr);
@@ -517,7 +520,12 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 
 	for (auto i = 1; i < argc; ++i)
 	{
-		if (wcsncmp(argv[i], L"-mesh", wcslen(argv[i])) == 0 ||
+		if (wcsncmp(argv[i], L"-warp", wcslen(argv[i])) == 0 ||
+			wcsncmp(argv[i], L"/warp", wcslen(argv[i])) == 0)
+		{
+			m_useWarpDevice = true;
+		}
+		else if (wcsncmp(argv[i], L"-mesh", wcslen(argv[i])) == 0 ||
 			wcsncmp(argv[i], L"/mesh", wcslen(argv[i])) == 0)
 		{
 			if (i + 1 < argc)

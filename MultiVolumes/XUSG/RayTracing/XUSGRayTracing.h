@@ -289,13 +289,14 @@ namespace XUSG
 
 			virtual void BuildRaytracingAccelerationStructure(const BuildDesc* pDesc,
 				uint32_t numPostbuildInfoDescs, const PostbuildInfo* pPostbuildInfoDescs,
-				const DescriptorHeap* pDescriptorHeap = nullptr) const = 0;
+				const DescriptorHeap* pDescriptorHeap = nullptr) = 0;
 			virtual void EmitRaytracingAccelerationStructurePostbuildInfo(const PostbuildInfo* pDesc,
 				uint32_t numAccelerationStructures, const uint64_t* pAccelerationStructureData) const = 0;
 			virtual void CopyRaytracingAccelerationStructure(const AccelerationStructure* pDst,
-				const AccelerationStructure* pSrc, CopyMode mode) const = 0;
+				const AccelerationStructure* pSrc, CopyMode mode,
+				const DescriptorHeap* pDescriptorHeap = nullptr) = 0;
 
-			virtual void SetDescriptorHeaps(uint32_t numDescriptorHeaps, const DescriptorHeap* pDescriptorHeaps) const = 0;
+			virtual void SetDescriptorHeaps(uint32_t numDescriptorHeaps, const DescriptorHeap* pDescriptorHeaps) = 0;
 			virtual void SetTopLevelAccelerationStructure(uint32_t index, const TopLevelAS* pTopLevelAS) const = 0;
 			virtual void SetTopLevelAccelerationStructure(uint32_t index, uint64_t topLevelASPtr) const = 0;
 			virtual void SetRayTracingPipeline(const Pipeline& pipeline) const = 0;

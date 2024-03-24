@@ -20,6 +20,7 @@
 #define XUSG_APPEND_ALIGNED_ELEMENT		0xffffffff
 #define XUSG_BARRIER_ALL_SUBRESOURCES	0xffffffff
 #define XUSG_DESCRIPTOR_OFFSET_APPEND	0xffffffff
+#define XUSG_NULL						0
 
 #define XUSG_DEF_ENUM_FLAG_OPERATORS(ENUMTYPE) \
 extern "C++" \
@@ -634,7 +635,8 @@ namespace XUSG
 		SAMPLER_HEAP,
 		RTV_HEAP,
 
-		NUM_DESCRIPTOR_HEAP
+		NUM_DESCRIPTOR_HEAP,
+		NUM_SHADER_VISIBLE_DESCRIPTOR_HEAP = SAMPLER_HEAP + 1
 	};
 
 	enum class SamplerFilter : uint8_t
@@ -1018,7 +1020,7 @@ namespace XUSG
 	};
 
 	using Descriptor = uintptr_t;
-	using DescriptorTable = std::shared_ptr<uint64_t>;
+	using DescriptorTable = uint64_t;
 	struct Framebuffer
 	{
 		uint32_t NumRenderTargetDescriptors;
@@ -1243,7 +1245,7 @@ namespace XUSG
 		virtual void SetPipelineState(const Pipeline& pipelineState) const = 0;
 		virtual void Barrier(uint32_t numBarriers, const ResourceBarrier* pBarriers) = 0;
 		virtual void ExecuteBundle(const CommandList* pCommandList) const = 0;
-		virtual void SetDescriptorHeaps(uint32_t numDescriptorHeaps, const DescriptorHeap* pDescriptorHeaps) const = 0;
+		virtual void SetDescriptorHeaps(uint32_t numDescriptorHeaps, const DescriptorHeap* pDescriptorHeaps) = 0;
 		virtual void SetComputePipelineLayout(const PipelineLayout& pipelineLayout) const = 0;
 		virtual void SetGraphicsPipelineLayout(const PipelineLayout& pipelineLayout) const = 0;
 		virtual void SetComputeDescriptorTable(uint32_t index, const DescriptorTable& descriptorTable) const = 0;
@@ -1536,19 +1538,19 @@ namespace XUSG
 
 		virtual void Blit(const CommandList* pCommandList, uint32_t groupSizeX, uint32_t groupSizeY,
 			uint32_t groupSizeZ, const DescriptorTable& uavSrvTable, uint32_t uavSrvSlot = 0,
-			uint8_t mipLevel = 0, const DescriptorTable& srvTable = nullptr, uint32_t srvSlot = 0,
-			const DescriptorTable& samplerTable = nullptr, uint32_t samplerSlot = 1,
+			uint8_t mipLevel = 0, const DescriptorTable& srvTable = XUSG_NULL, uint32_t srvSlot = 0,
+			const DescriptorTable& samplerTable = XUSG_NULL, uint32_t samplerSlot = 1,
 			const Pipeline& pipeline = nullptr) = 0;
 
 		virtual uint32_t Blit(CommandList* pCommandList, ResourceBarrier* pBarriers, uint32_t groupSizeX,
 			uint32_t groupSizeY, uint32_t groupSizeZ, uint8_t mipLevel, int8_t srcMipLevel,
 			ResourceState srcState, const DescriptorTable& uavSrvTable, uint32_t uavSrvSlot = 0,
-			uint32_t numBarriers = 0, const DescriptorTable& srvTable = nullptr, uint32_t srvSlot = 0,
+			uint32_t numBarriers = 0, const DescriptorTable& srvTable = XUSG_NULL, uint32_t srvSlot = 0,
 			uint16_t baseSlice = 0, uint16_t numSlices = 0, uint32_t threadIdx = 0) = 0;
 		virtual uint32_t GenerateMips(CommandList* pCommandList, ResourceBarrier* pBarriers, uint32_t groupSizeX,
 			uint32_t groupSizeY, uint32_t groupSizeZ, ResourceState dstState, const PipelineLayout& pipelineLayout,
 			const Pipeline& pipeline, const DescriptorTable* pUavSrvTables, uint32_t uavSrvSlot = 0,
-			const DescriptorTable& samplerTable = nullptr, uint32_t samplerSlot = 1, uint32_t numBarriers = 0,
+			const DescriptorTable& samplerTable = XUSG_NULL, uint32_t samplerSlot = 1, uint32_t numBarriers = 0,
 			const DescriptorTable* pSrvTables = nullptr, uint32_t srvSlot = 0, uint8_t baseMip = 1,
 			uint8_t numMips = 0, uint16_t baseSlice = 0, uint16_t numSlices = 0, uint32_t threadIdx = 0) = 0;
 
@@ -1615,7 +1617,7 @@ namespace XUSG
 
 		virtual void Blit(const CommandList* pCommandList, const DescriptorTable& srcSrvTable,
 			uint32_t srcSlot = 0, uint8_t mipLevel = 0, uint16_t baseSlice = 0,
-			uint16_t numSlices = 0, const DescriptorTable& samplerTable = nullptr,
+			uint16_t numSlices = 0, const DescriptorTable& samplerTable = XUSG_NULL,
 			uint32_t samplerSlot = 1, const Pipeline& pipeline = nullptr,
 			uint32_t offsetForSliceId = 0, uint32_t cbSlot = 2) = 0;
 
@@ -1625,7 +1627,7 @@ namespace XUSG
 			uint32_t offsetForSliceId = 0, uint32_t cbSlot = 2, uint32_t threadIdx = 0) = 0;
 		virtual uint32_t GenerateMips(CommandList* pCommandList, ResourceBarrier* pBarriers, ResourceState dstState,
 			const PipelineLayout& pipelineLayout, const Pipeline& pipeline, const DescriptorTable* pSrcSrvTables,
-			uint32_t srcSlot = 0, const DescriptorTable& samplerTable = nullptr, uint32_t samplerSlot = 1,
+			uint32_t srcSlot = 0, const DescriptorTable& samplerTable = XUSG_NULL, uint32_t samplerSlot = 1,
 			uint32_t numBarriers = 0, uint8_t baseMip = 1, uint8_t numMips = 0, uint16_t baseSlice = 0,
 			uint16_t numSlices = 0, uint32_t offsetForSliceId = 0, uint32_t cbSlot = 2, uint32_t threadIdx = 0) = 0;
 
@@ -1911,14 +1913,14 @@ namespace XUSG
 				DescriptorTableLib* pDescriptorTableLib, uint8_t descriptorHeapIndex = 0) = 0;
 
 			virtual XUSG::DescriptorTable CreateCbvSrvUavTable(DescriptorTableLib* pDescriptorTableLib,
-				const XUSG::DescriptorTable& table = nullptr) = 0;
+				const XUSG::DescriptorTable& table = XUSG_NULL) = 0;
 			virtual XUSG::DescriptorTable GetCbvSrvUavTable(DescriptorTableLib* pDescriptorTableLib,
-				const XUSG::DescriptorTable& table = nullptr) = 0;
+				const XUSG::DescriptorTable& table = XUSG_NULL) = 0;
 
 			virtual XUSG::DescriptorTable CreateSamplerTable(DescriptorTableLib* pDescriptorTableLib,
-				const XUSG::DescriptorTable& table = nullptr) = 0;
+				const XUSG::DescriptorTable& table = XUSG_NULL) = 0;
 			virtual XUSG::DescriptorTable GetSamplerTable(DescriptorTableLib* pDescriptorTableLib,
-				const XUSG::DescriptorTable& table = nullptr) = 0;
+				const XUSG::DescriptorTable& table = XUSG_NULL) = 0;
 
 			virtual Framebuffer CreateFramebuffer(DescriptorTableLib* pDescriptorTableLib,
 				const Descriptor* pDsv = nullptr, const Framebuffer* pFramebuffer = nullptr) = 0;
@@ -1927,10 +1929,10 @@ namespace XUSG
 
 			virtual const std::string& GetKey() const = 0;
 
-			virtual uint32_t CreateCbvSrvUavTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = nullptr) = 0;
-			virtual uint32_t GetCbvSrvUavTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = nullptr) = 0;
-			virtual uint32_t CreateSamplerTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = nullptr) = 0;
-			virtual uint32_t GetSamplerTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = nullptr) = 0;
+			virtual uint32_t CreateCbvSrvUavTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = XUSG_NULL) = 0;
+			virtual uint32_t GetCbvSrvUavTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = XUSG_NULL) = 0;
+			virtual uint32_t CreateSamplerTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = XUSG_NULL) = 0;
+			virtual uint32_t GetSamplerTableIndex(DescriptorTableLib* pDescriptorTableLib, XUSG::DescriptorTable table = XUSG_NULL) = 0;
 			virtual uint32_t GetDescriptorTableIndex(DescriptorTableLib* pDescriptorTableLib, DescriptorHeapType type,
 				const XUSG::DescriptorTable& table) const = 0;
 
@@ -1955,11 +1957,11 @@ namespace XUSG
 
 		virtual bool AllocateDescriptorHeap(DescriptorHeapType type, uint32_t numDescriptors, uint8_t index = 0) = 0;
 
-		virtual DescriptorTable CreateCbvSrvUavTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = nullptr) = 0;
-		virtual DescriptorTable GetCbvSrvUavTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = nullptr) = 0;
+		virtual DescriptorTable CreateCbvSrvUavTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = XUSG_NULL) = 0;
+		virtual DescriptorTable GetCbvSrvUavTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = XUSG_NULL) = 0;
 
-		virtual DescriptorTable CreateSamplerTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = nullptr) = 0;
-		virtual DescriptorTable GetSamplerTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = nullptr) = 0;
+		virtual DescriptorTable CreateSamplerTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = XUSG_NULL) = 0;
+		virtual DescriptorTable GetSamplerTable(const Util::DescriptorTable* pUtil, const DescriptorTable& table = XUSG_NULL) = 0;
 
 		virtual Framebuffer CreateFramebuffer(const Util::DescriptorTable* pUtil,
 			const Descriptor* pDsv = nullptr, const Framebuffer* pFramebuffer = nullptr) = 0;
