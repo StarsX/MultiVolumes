@@ -13,8 +13,8 @@ typedef VolumeInfo VolumeOut;
 //--------------------------------------------------------------------------------------
 // Buffers
 //--------------------------------------------------------------------------------------
-StructuredBuffer<PerObject>	g_roPerObject;
-StructuredBuffer<VolumeIn>	g_roVolumes;
+StructuredBuffer<PerObject>	g_roPerObject	: register (t0);
+StructuredBuffer<VolumeIn>	g_roVolumes		: register (t1);
 
 AppendStructuredBuffer<uint> g_rwVisibleVolumes;
 RWBuffer<uint4> g_rwVolumes;
