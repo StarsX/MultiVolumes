@@ -206,14 +206,14 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	return true;
 }
 
-bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderTarget* pColorOut, const XUSG::DepthStencil::uptr* depths)
+bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderTarget* pColorOut, const DepthStencil::uptr* depths)
 {
 	m_pDepths = depths;
 
 	const auto width = static_cast<uint32_t>(depths[DEPTH_MAP]->GetWidth());
 	const auto height = depths[DEPTH_MAP]->GetHeight();
 
-	m_depth = XUSG::DepthStencil::MakeUnique();
+	m_depth = DepthStencil::MakeUnique();
 	XUSG_N_RETURN(m_depth->Create(pDevice, width, height, Format::D32_FLOAT, ResourceFlag::DENY_SHADER_RESOURCE,
 		1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"DepthIncCubes"), false);
 
