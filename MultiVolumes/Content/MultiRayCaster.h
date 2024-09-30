@@ -208,8 +208,8 @@ protected:
 	XUSG::StructuredBuffer::sptr	m_coeffSH;
 	XUSG::DepthStencil::uptr m_depth;
 
-	XUSG::Resource::uptr	m_scratch;
-	XUSG::Resource::uptr	m_instances;
+	XUSG::Buffer::uptr		m_scratch;
+	XUSG::Buffer::uptr		m_instances;
 
 	uint32_t				m_gridSize;
 	uint32_t				m_lightGridSize;

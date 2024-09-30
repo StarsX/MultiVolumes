@@ -70,8 +70,6 @@ MultiRayCaster::MultiRayCaster() :
 	m_workGraphSupport(true)
 {
 	m_shaderLib = ShaderLib::MakeUnique();
-
-	AccelerationStructure::SetUAVCount(2);
 }
 
 MultiRayCaster::~MultiRayCaster()
@@ -135,10 +133,6 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	XUSG_N_RETURN(m_cbPerObject->Create(pDevice, sizeof(CBPerObject[FrameCount]), FrameCount,
 		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerObject"), false);*/
 
-	// Create pipelines
-	XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
-	XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
-
 	// create command layout
 	XUSG_N_RETURN(createCommandLayouts(pDevice), false);
 
@@ -153,10 +147,18 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	if (m_rtSupport)
 	{
 		XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
-		//XUSG_N_RETURN(createDescriptorTables(nullptr), false); // included in buildAccelerationStructures()
+		XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
+		XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
+		XUSG_N_RETURN(createDescriptorTables(nullptr), false);
 		XUSG_N_RETURN(buildShaderTables(pDevice), false);
 	}
-	else XUSG_N_RETURN(createDescriptorTables(nullptr), false);
+	else
+	{
+		// Create pipelines and descriptor tables
+		XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
+		XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
+		XUSG_N_RETURN(createDescriptorTables(nullptr), false);
+	}
 
 	if (m_workGraphSupport) initWorkGraph(pDevice);
 
@@ -185,7 +187,7 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-	ResourceBarrier barrier;
+	XUSG::ResourceBarrier barrier;
 	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
 	pCommandList->Barrier(numBarriers, &barrier);
 
@@ -243,7 +245,7 @@ void MultiRayCaster::InitVolumeData(XUSG::CommandList* pCommandList, uint32_t i)
 	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-	ResourceBarrier barrier;
+	XUSG::ResourceBarrier barrier;
 	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
 	pCommandList->Barrier(numBarriers, &barrier);
 
@@ -456,7 +458,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 	const auto pDevice = pCommandList->GetDevice();
 
 	{
-		uint32_t firstSRVElements[FrameCount];
+		uintptr_t firstSRVElements[FrameCount];
 		for (uint8_t i = 0; i < FrameCount; ++i) firstSRVElements[i] = numVolumes * i;
 
 		m_perObject = StructuredBuffer::MakeUnique();
@@ -1164,38 +1166,32 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 	XUSG_N_RETURN(m_topLevelAS->Prebuild(pDevice, numVolumes), false);
 
 	// Allocate AS buffers
-	// Descriptor indices in the descriptor heap
-	const auto bottomLevelASIndex = 0u;
-	const auto topLevelASIndex = bottomLevelASIndex + 1;
-	XUSG_N_RETURN(m_bottomLevelAS->Allocate(pDevice, bottomLevelASIndex), false);
-	XUSG_N_RETURN(m_topLevelAS->Allocate(pDevice, topLevelASIndex), false);
+	XUSG_N_RETURN(m_bottomLevelAS->Allocate(pDevice, m_descriptorTableLib.get()), false);
+	XUSG_N_RETURN(m_topLevelAS->Allocate(pDevice, m_descriptorTableLib.get()), false);
 
 	// Create scratch buffer
-	auto scratchSize = m_topLevelAS->GetScratchDataMaxSize();
-	scratchSize = (max)(m_bottomLevelAS->GetScratchDataMaxSize(), scratchSize);
-	m_scratch = Resource::MakeUnique();
+	auto scratchSize = m_topLevelAS->GetScratchDataByteSize();
+	scratchSize = (max)(m_bottomLevelAS->GetScratchDataByteSize(), scratchSize);
+	m_scratch = Buffer::MakeUnique();
 	XUSG_N_RETURN(AccelerationStructure::AllocateUAVBuffer(pDevice, m_scratch.get(), scratchSize), false);
-
-	// Get descriptor pool and create descriptor tables
-	XUSG_N_RETURN(createDescriptorTables(nullptr), false);
-	const auto& descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 
 	// Set instance
 	vector<float*> transforms(numVolumes);
 	for (auto i = 0u; i < numVolumes; ++i)
 		transforms[i] = reinterpret_cast<float*>(&m_volumeWorlds[i]);
-	m_instances = Resource::MakeUnique();
+	m_instances = Buffer::MakeUnique();
 	vector<const BottomLevelAS*> pBottomLevelASs(numVolumes, m_bottomLevelAS.get());
 	TopLevelAS::SetInstances(pDevice, m_instances.get(), numVolumes, pBottomLevelASs.data(), transforms.data());
 
-	// Build bottom level ASs
+	// Build bottom level ASes
 	m_bottomLevelAS->Build(pCommandList, m_scratch.get());
 
-	const ResourceBarrier barrier = { nullptr, ResourceState::UNORDERED_ACCESS };
+	const XUSG::ResourceBarrier barrier = { nullptr, ResourceState::UNORDERED_ACCESS };
 	pCommandList->Barrier(1, &barrier);
 
 	// Build top level AS
-	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(), descriptorHeap);
+	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(),
+		m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP));
 
 	return true;
 }
@@ -1207,18 +1203,18 @@ bool MultiRayCaster::buildShaderTables(const RayTracing::Device* pDevice)
 
 	// Ray gen shader table
 	m_rayGenShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_rayGenShaderTable->Create(pDevice, 1, shaderIDSize, L"RayGenShaderTable"), false);
-	XUSG_N_RETURN(m_rayGenShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], RaygenShaderName).get()), false);
+	XUSG_N_RETURN(m_rayGenShaderTable->Create(pDevice, 1, shaderIDSize, MemoryFlag::NONE, L"RayGenShaderTable"), false);
+	m_rayGenShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], RaygenShaderName).get());
 
 	// Hit group shader table
 	m_hitGroupShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_hitGroupShaderTable->Create(pDevice, 1, shaderIDSize, L"HitGroupShaderTable"), false);
-	XUSG_N_RETURN(m_hitGroupShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], HitGroupName).get()), false);
+	XUSG_N_RETURN(m_hitGroupShaderTable->Create(pDevice, 1, shaderIDSize, MemoryFlag::NONE, L"HitGroupShaderTable"), false);
+	m_hitGroupShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], HitGroupName).get());
 
 	// Miss shader table
 	m_missShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_missShaderTable->Create(pDevice, 1, shaderIDSize, L"MissShaderTable"), false);
-	XUSG_N_RETURN(m_missShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], MissShaderName).get()), false);
+	XUSG_N_RETURN(m_missShaderTable->Create(pDevice, 1, shaderIDSize, MemoryFlag::NONE, L"MissShaderTable"), false);
+	m_missShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], MissShaderName).get());
 
 	return true;
 }
@@ -1226,7 +1222,7 @@ bool MultiRayCaster::buildShaderTables(const RayTracing::Device* pDevice)
 void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	ResourceBarrier barriers[5];
+	XUSG::ResourceBarrier barriers[5];
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_cubeMapVolumeCounter->SetBarrier(barriers, ResourceState::COPY_DEST,
@@ -1276,7 +1272,7 @@ bool MultiRayCaster::initWorkGraph(const XUSG::Device* pDevice)
 void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + 3);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + 3);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(),
 		ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
@@ -1306,7 +1302,7 @@ void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
 	auto numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_cubeMapVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_SOURCE, numBarriers);
@@ -1347,7 +1343,7 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_DEST);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
@@ -1427,7 +1423,7 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	ResourceBarrier barriers[3];
+	XUSG::ResourceBarrier barriers[3];
 	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
@@ -1467,7 +1463,7 @@ void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t fram
 void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	ResourceBarrier barriers[2];
+	XUSG::ResourceBarrier barriers[2];
 	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
@@ -1504,7 +1500,7 @@ void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameI
 void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
 	auto numBarriers = m_kColors->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	numBarriers = m_kDepths->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
@@ -1542,7 +1538,7 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, RenderTarget* pOutView)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size());
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size());
 	auto numBarriers = 0u;
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
@@ -1560,7 +1556,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	// Set descriptor tables
 	pCommandList->SetGraphicsDescriptorTable(0, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
-	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetResource().get());
+	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetVirtualAddress());
 	pCommandList->SetGraphicsDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
 	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
@@ -1575,7 +1571,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	ResourceBarrier barrier;
+	XUSG::ResourceBarrier barrier;
 	const auto numBarriers = m_kColors->SetBarrier(&barrier, ResourceState::PIXEL_SHADER_RESOURCE);
 	pCommandList->Barrier(numBarriers, &barrier);
 
@@ -1595,7 +1591,7 @@ void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIn
 void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t frameIndex, Texture* pColorOut)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
 	auto numBarriers = pColorOut->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
@@ -1614,6 +1610,6 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
 
-	pCommandList->DispatchRays(m_pipelines[RAY_TRACING], m_viewport.x, m_viewport.y, 1,
-		m_rayGenShaderTable.get(), m_hitGroupShaderTable.get(), m_missShaderTable.get());
+	pCommandList->SetRayTracingPipeline(m_pipelines[RAY_TRACING]);
+	pCommandList->DispatchRays(m_viewport.x, m_viewport.y, 1, m_rayGenShaderTable.get(), m_hitGroupShaderTable.get(), m_missShaderTable.get());
 }

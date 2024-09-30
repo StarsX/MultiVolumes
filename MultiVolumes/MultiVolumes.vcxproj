@@ -58,12 +58,9 @@
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y "$(OutDir)*.cso" "$(ProjectDir)..\Bin\"
-
-
 COPY /Y "$(OutDir)*.exe" "$(ProjectDir)..\Bin\"
-
-
-COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"</Command>
+COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"
+COPY /Y "$(ProjectDir)dxc\*.dll" "$(ProjectDir)..\Bin\"</Command>
     </PostBuildEvent>
     <FxCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)Content;$(ProjectDir)XUSG\Shaders</AdditionalIncludeDirectories>
@@ -91,12 +88,9 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y "$(OutDir)*.cso" "$(ProjectDir)..\Bin\"
-
-
 COPY /Y "$(OutDir)*.exe" "$(ProjectDir)..\Bin\"
-
-
-COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"</Command>
+COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"
+COPY /Y "$(ProjectDir)dxc\*.dll" "$(ProjectDir)..\Bin\"</Command>
     </PostBuildEvent>
     <FxCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)Content;$(ProjectDir)XUSG\Shaders</AdditionalIncludeDirectories>
