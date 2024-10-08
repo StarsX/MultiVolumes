@@ -19,19 +19,19 @@ float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSiz
 // Main compute shader for volume culling
 //--------------------------------------------------------------------------------------
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
-void main(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID)
+void main(uint Gid : SV_GroupID)
 {
 	uint2 structInfo;
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
 
-	const uint volumeId = Gid * GROUP_VOLUME_COUNT + GTid.y;
+	uint2 wTid;
+	wTid.y = WaveGetLaneIndex() / 8;
+
+	const uint volumeId = Gid * GROUP_VOLUME_COUNT + wTid.y;
 	if (volumeId >= structInfo.x) return;
 
 	const PerObject perObject = g_roPerObject[volumeId];
-
-	uint2 wTid;
 	wTid.x = WaveGetLaneIndex() % 8;
-	wTid.y = WaveGetLaneIndex() / 8;
 
 	// Project vertex to viewport space
 	const float4 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);

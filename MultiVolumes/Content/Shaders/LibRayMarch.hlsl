@@ -23,6 +23,15 @@ struct RayMarchRecord
 	uint VolTexId;	// Volume texture Id
 };
 
+struct VolumeOutRecord
+{
+	uint VolumeId;
+	uint MipLevel;	// Mip level
+	uint SmpCount;	// Ray sample count
+	uint MaskBits;	// Highest bit in the uint16: render scheme, lowest 6 bits: cube-face visibility mask 
+	uint VolTexId;	// Volume texture Id
+};
+
 //--------------------------------------------------------------------------------------
 // Estimate visible pixels of the cube map
 //--------------------------------------------------------------------------------------
@@ -38,23 +47,23 @@ float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSiz
 [NodeLaunch("broadcasting")]
 [NodeDispatchGrid(1, 1, 1)]
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
-void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
+void VolumeCull(uint Gid : SV_GroupID,
 	DispatchNodeInputRecord<VolumeCullRecord> input,
 	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarch)
 {
 	uint2 structInfo;
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
 
-	const uint volumeId = Gid * GROUP_VOLUME_COUNT + GTid.y;
-
 	uint2 wTid;
 	wTid.x = WaveGetLaneIndex() % 8;
 	wTid.y = WaveGetLaneIndex() / 8;
 
+	const uint volumeId = Gid * GROUP_VOLUME_COUNT + wTid.y;
+
 	PerObject perObject = (PerObject)0;
 	float4 v = 0.0;
 
-	uint volumeVis;
+	uint volumeVis = 0;
 	if (volumeId < structInfo.x)
 	{
 		perObject = g_roPerObject[volumeId];
@@ -63,16 +72,17 @@ void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
 		v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
 
 		// If any vertices are inside viewport
-		const bool isInView = all(and(v.xy <= g_viewport, v.xy >= 0.0)) && v.z > 0.0 && v.z < 1.0;
+		const bool isInView = all(and(v.xy <= g_viewport, v.xy >= 0.0)) && (v.z > 0.0 && v.z < 1.0);
 		const uint waveMask = WaveActiveBallot(isInView).x;
 		volumeVis = (waveMask >> (8 * wTid.y)) & 0xff;
 		//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
 	}
-	else volumeVis = false;
+	//else volumeVis = 0;
 
 	VolumeIn volumeIn = (VolumeIn)0;
 	uint raySampleCount = 0, faceMask = 0, cubeMapSize = 0, mipLevel = 0;
 	bool useCubeMap = true;
+
 	if (volumeVis)
 	{
 		if (wTid.x == 0)
@@ -95,40 +105,40 @@ void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
 		// Volume projection coverage
 		const float projCov = EstimateProjCoverage(ep, wTid, faceMask, baseLaneId);
 
+#if _ADAPTIVE_RAYMARCH_
 		if (wTid.x == 0)
 		{
 			// Visible pixels of the cube map
 			const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
 			useCubeMap = cubeMapPix <= projCov;
 		}
+#endif
 	}
 
-	const bool needOutput = volumeVis && wTid.x == 0;
-	ThreadNodeOutputRecords<RayMarchRecord> outRec = RayMarch.GetThreadNodeOutputRecords(needOutput && useCubeMap ? 1 : 0);
+	const bool needOutput = volumeVis != 0 && wTid.x == 0;
+	ThreadNodeOutputRecords<RayMarchRecord> rayMarchOutRec = RayMarch.GetThreadNodeOutputRecords(needOutput && useCubeMap ? 1 : 0);
 
 	if (needOutput)
 	{
 		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
 		const uint volTexId = GetSourceTextureId(volumeIn);
 
-#if _ADAPTIVE_RAYMARCH_
 		if (useCubeMap)
-#endif
 		{
 			const uint mipCubeMapSize = cubeMapSize >> mipLevel;
-			outRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 4));
-			outRec.Get().VolumeId = volumeId;
-			outRec.Get().MipLevel = mipLevel;
-			outRec.Get().SmpCount = raySampleCount;
-			outRec.Get().MaskBits = maskBits;
-			outRec.Get().VolTexId = volTexId;
+			rayMarchOutRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 4));
+			rayMarchOutRec.Get().VolumeId = volumeId;
+			rayMarchOutRec.Get().MipLevel = mipLevel;
+			rayMarchOutRec.Get().SmpCount = raySampleCount;
+			rayMarchOutRec.Get().MaskBits = maskBits;
+			rayMarchOutRec.Get().VolTexId = volTexId;
 		}
 
 		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
 	}
 
-	outRec.OutputComplete();
+	rayMarchOutRec.OutputComplete();
 }
 
 //--------------------------------------------------------------------------------------

@@ -172,7 +172,7 @@ protected:
 	XUSG::Graphics::PipelineLib::uptr	m_graphicsPipelineLib;
 	XUSG::Compute::PipelineLib::uptr	m_computePipelineLib;
 	XUSG::WorkGraph::PipelineLib::uptr	m_workGraphPipelineLib;
-	XUSG::PipelineLayoutLib::uptr		m_pipelineLayoutLib;
+	XUSG::Ultimate::PipelineLayoutLib::uptr m_pipelineLayoutLib;
 	XUSG::DescriptorTableLib::sptr		m_descriptorTableLib;
 
 	XUSG::PipelineLayout	m_pipelineLayouts[NUM_PIPELINE];
