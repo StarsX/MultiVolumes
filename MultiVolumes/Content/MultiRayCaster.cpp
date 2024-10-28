@@ -372,7 +372,7 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frame
 		traceCube(pCommandList, frameIndex, pColorOut);
 		break;
 	case OIT_RAY_QUERY:
-		renderDepth(pCommandList, frameIndex);
+		renderDepth(pCommandList, frameIndex, useWorkGraph);
 		renderCubeRT(pCommandList, frameIndex, pColorOut);
 		break;
 	default:
@@ -532,8 +532,9 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 
 		m_volumeDrawArg = Buffer::MakeUnique();
 		XUSG_N_RETURN(m_volumeDrawArg->Create(pDevice, sizeof(uint32_t[5]),
-			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
-			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDrawArg"), false);
+			ResourceFlag::DENY_SHADER_RESOURCE | ResourceFlag::ALLOW_UNORDERED_ACCESS,
+			MemoryType::DEFAULT, 0, nullptr, 0, nullptr, MemoryFlag::NONE,
+			L"RayCaster.VisibleVolumeDrawArg"), false);
 
 		const uint32_t pDrawReset[] = { 36, 0, 0, 0, 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -746,6 +747,15 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 			PipelineLayoutFlag::NONE, L"RayTracingLayout"), false);
 	}
 
+	// Copy volume draw arg
+	{
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRootUAV(0, 0);
+		pipelineLayout->SetRootSRV(1, 0);
+		XUSG_X_RETURN(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
+			PipelineLayoutFlag::NONE, L"CopyVolumeDrawArgLayout"), false);
+	}
+
 	return true;
 }
 
@@ -930,6 +940,16 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_TRACING]);
 		state->SetMaxRecursionDepth(1);
 		XUSG_X_RETURN(m_pipelines[RAY_TRACING], state->GetPipeline(m_rayTracingPipelineLib.get(), L"Raytracing"), false);
+	}
+
+	// Copy volume draw arg
+	{
+		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::CS, csIndex, L"CSCopyVolumeDrawArg.cso"), false);
+
+		const auto state = Compute::State::MakeUnique();
+		state->SetPipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
+		state->SetShader(m_shaderLib->GetShader(Shader::Stage::CS, csIndex++));
+		XUSG_X_RETURN(m_pipelines[COPY_VOLUME_DRAW_ARG], state->GetPipeline(m_computePipelineLib.get(), L"CopyVolumeDrawArg"), false);
 	}
 
 	return true;
@@ -1462,20 +1482,39 @@ void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t fram
 	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
-void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph)
 {
-	// Set barriers
 	XUSG::ResourceBarrier barriers[2];
-	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
-		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers);
+	if (useWorkGraph)
+	{
+		// Workaround for work-graph path
+		// Set barriers
+		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS,
+			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+		pCommandList->Barrier(numBarriers, barriers);
 
-	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+		// Copy counter to instance count
+		pCommandList->SetComputePipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetPipelineState(m_pipelines[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetComputeRootUnorderedAccessView(0, m_volumeDrawArg.get(), sizeof(uint32_t));
+		pCommandList->SetComputeRootShaderResourceView(1, m_visibleVolumeCounter.get());
+		pCommandList->Dispatch(1, 1, 1);
+	}
+	else
+	{
+		// Set barriers
+		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
+			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
+		pCommandList->Barrier(numBarriers, barriers);
+
+		// Copy counter to instance count
+		pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	}
 
 	// Set barriers
-	numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT);
+	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 

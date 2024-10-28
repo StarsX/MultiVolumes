@@ -66,6 +66,7 @@ protected:
 		RENDER_CUBE_RT,
 		RESOLVE_OIT,
 		RAY_TRACING,
+		COPY_VOLUME_DRAW_ARG,
 
 		NUM_PIPELINE
 	};
@@ -146,7 +147,7 @@ protected:
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchWG(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut);
 	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
