@@ -1385,7 +1385,7 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 
 	// Set pipeline state
 	assert(m_rayMarchGraph.BackingMemory->GetWidth() >= m_rayMarchGraph.MemRequirments.MaxByteSize);
-	pCommandList->SetStateObject(m_pipelines[RAY_MARCH_WG]);
+	//pCommandList->SetStateObject(m_pipelines[RAY_MARCH_WG]);
 	pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, workGraphFlag,
 		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MaxByteSize);
 
@@ -1432,7 +1432,7 @@ void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t fram
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
 
 	// Set barriers
 	numBarriers = m_kDepths->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
@@ -1472,7 +1472,7 @@ void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameI
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
 
 	// Set barriers
 	numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT);

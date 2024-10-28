@@ -8,14 +8,6 @@
 AppendStructuredBuffer<uint> g_rwCubeMapVolumes;
 
 //--------------------------------------------------------------------------------------
-// Estimate visible pixels of the cube map
-//--------------------------------------------------------------------------------------
-float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSize)
-{
-	return EstimateCubeMapVisiblePixels(faceMask, cubeMapSize >> mipLevel);
-}
-
-//--------------------------------------------------------------------------------------
 // Main compute shader for volume culling
 //--------------------------------------------------------------------------------------
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
@@ -34,7 +26,7 @@ void main(uint Gid : SV_GroupID)
 	wTid.x = WaveGetLaneIndex() % 8;
 
 	// Project vertex to viewport space
-	const float4 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
+	const float3 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
 
 	// If any vertices are inside viewport
 	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0) && v.z > 0.0 && v.z < 1.0;

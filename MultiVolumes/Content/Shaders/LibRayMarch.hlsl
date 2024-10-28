@@ -3,10 +3,11 @@
 //--------------------------------------------------------------------------------------
 
 #define _LIGHT_PASS_
+#define _NO_ARRAY_INDEXING_
 #include "RayMarch.hlsli"
 #include "VolumeCull.hlsli"
 
-#define DIV_UP(x, n) (((x) - 1) / (n) + 1)
+#define DIV_UP(x, n) (((x) + (n) - 1) / (n))
 
 struct VolumeCullRecord
 {
@@ -33,14 +34,6 @@ struct VolumeOutRecord
 };
 
 //--------------------------------------------------------------------------------------
-// Estimate visible pixels of the cube map
-//--------------------------------------------------------------------------------------
-float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSize)
-{
-	return EstimateCubeMapVisiblePixels(faceMask, cubeMapSize >> mipLevel);
-}
-
-//--------------------------------------------------------------------------------------
 // Main compute shader for volume culling
 //--------------------------------------------------------------------------------------
 [Shader("node")]
@@ -61,7 +54,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 	const uint volumeId = Gid * GROUP_VOLUME_COUNT + wTid.y;
 
 	PerObject perObject = (PerObject)0;
-	float4 v = 0.0;
+	float3 v = 0.0;
 
 	uint volumeVis = 0;
 	if (volumeId < structInfo.x)
@@ -115,7 +108,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 #endif
 	}
 
-	const bool needOutput = volumeVis != 0 && wTid.x == 0;
+	const bool needOutput = volumeVis && wTid.x == 0;
 	ThreadNodeOutputRecords<RayMarchRecord> rayMarchOutRec = RayMarch.GetThreadNodeOutputRecords(needOutput && useCubeMap ? 1 : 0);
 
 	if (needOutput)
@@ -208,7 +201,7 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 //--------------------------------------------------------------------------------------
 [Shader("node")]
 [NodeLaunch("broadcasting")]
-[NodeMaxDispatchGrid(128, 256, 1)]
+[NodeMaxDispatchGrid(32, 64, 1)]
 [numthreads(8, 4, 6)]
 void RayMarch(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
 	DispatchNodeInputRecord<RayMarchRecord> input)
