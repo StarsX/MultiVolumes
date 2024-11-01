@@ -37,7 +37,7 @@ public:
 	bool SetRenderTargets(const XUSG::Device* pDevice, const XUSG::RenderTarget* pColorOut, const XUSG::DepthStencil::uptr* depths);
 	bool SetViewport(const XUSG::Device* pDevice, uint32_t width, uint32_t height, const XUSG::Texture* pColorOut);
 
-	void InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i);
+	void InitVolumeData(XUSG::CommandList* pCommandList, uint32_t i);
 	void SetSH(const XUSG::StructuredBuffer::sptr& coeffSH);
 	void SetMaxSamples(uint32_t maxRaySamples, uint32_t maxLightSamples);
 	void SetVolumesWorld(float size, const DirectX::XMFLOAT3& center);
@@ -66,6 +66,7 @@ protected:
 		RENDER_CUBE_RT,
 		RESOLVE_OIT,
 		RAY_TRACING,
+		COPY_VOLUME_DRAW_ARG,
 
 		NUM_PIPELINE
 	};
@@ -124,7 +125,7 @@ protected:
 		std::vector<uint32_t> EntrypointIndices;
 		std::vector<uint32_t> RecordByteSizes;
 		XUSG::ProgramIdentifier Identifier;
-		XUSG::RawBuffer::uptr BackingMemory;
+		XUSG::Buffer::uptr BackingMemory;
 		XUSG::WorkGraph::MemoryRequirements MemRequirments;
 	};
 
@@ -146,7 +147,7 @@ protected:
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchWG(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
 	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
-	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut);
 	void resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex);
@@ -172,7 +173,7 @@ protected:
 	XUSG::Graphics::PipelineLib::uptr	m_graphicsPipelineLib;
 	XUSG::Compute::PipelineLib::uptr	m_computePipelineLib;
 	XUSG::WorkGraph::PipelineLib::uptr	m_workGraphPipelineLib;
-	XUSG::PipelineLayoutLib::uptr		m_pipelineLayoutLib;
+	XUSG::Ultimate::PipelineLayoutLib::uptr m_pipelineLayoutLib;
 	XUSG::DescriptorTableLib::sptr		m_descriptorTableLib;
 
 	XUSG::PipelineLayout	m_pipelineLayouts[NUM_PIPELINE];
@@ -201,15 +202,15 @@ protected:
 	XUSG::StructuredBuffer::sptr m_visibleVolumeCounter;
 	XUSG::StructuredBuffer::sptr m_cubeMapVolumeCounter;
 	XUSG::TypedBuffer::uptr m_volumeAttribs;
-	XUSG::RawBuffer::uptr	m_volumeDispatchArg;
-	XUSG::RawBuffer::uptr	m_volumeDrawArg;
+	XUSG::Buffer::uptr	m_volumeDispatchArg;
+	XUSG::Buffer::uptr	m_volumeDrawArg;
 
 	const XUSG::DepthStencil::uptr* m_pDepths;
 	XUSG::StructuredBuffer::sptr	m_coeffSH;
 	XUSG::DepthStencil::uptr m_depth;
 
-	XUSG::Resource::uptr	m_scratch;
-	XUSG::Resource::uptr	m_instances;
+	XUSG::Buffer::uptr		m_scratch;
+	XUSG::Buffer::uptr		m_instances;
 
 	uint32_t				m_gridSize;
 	uint32_t				m_lightGridSize;

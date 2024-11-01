@@ -27,8 +27,9 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
 
 	const uint visibleVolumeCount = g_roVisibleVolumeCount[0];
-	uint volumeId = g_roVisibleVolumes[g_frameIdx % visibleVolumeCount];
-	//uint volumeId = g_frameIdx % structInfo.x;
+	uint volumeId;
+	if (visibleVolumeCount) volumeId = g_roVisibleVolumes[g_frameIdx % visibleVolumeCount];
+	else volumeId = g_frameIdx % structInfo.x;
 	volumeId = WaveReadLaneAt(volumeId, 0);
 
 	float4 rayOrigin;

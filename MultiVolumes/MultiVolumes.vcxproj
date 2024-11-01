@@ -58,17 +58,15 @@
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y "$(OutDir)*.cso" "$(ProjectDir)..\Bin\"
-
-
 COPY /Y "$(OutDir)*.exe" "$(ProjectDir)..\Bin\"
-
-
-COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"</Command>
+COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"
+COPY /Y "$(ProjectDir)dxc\*.dll" "$(ProjectDir)..\Bin\"</Command>
     </PostBuildEvent>
     <FxCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)Content;$(ProjectDir)XUSG\Shaders</AdditionalIncludeDirectories>
       <AllResourcesBound>true</AllResourcesBound>
       <ShaderModel>6.3</ShaderModel>
+      <AdditionalOptions>/Qembed_debug</AdditionalOptions>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -90,12 +88,9 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
     </Link>
     <PostBuildEvent>
       <Command>COPY /Y "$(OutDir)*.cso" "$(ProjectDir)..\Bin\"
-
-
 COPY /Y "$(OutDir)*.exe" "$(ProjectDir)..\Bin\"
-
-
-COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"</Command>
+COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir)..\Bin\"
+COPY /Y "$(ProjectDir)dxc\*.dll" "$(ProjectDir)..\Bin\"</Command>
     </PostBuildEvent>
     <FxCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)Content;$(ProjectDir)XUSG\Shaders</AdditionalIncludeDirectories>
@@ -179,6 +174,10 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
     <None Include="XUSG\Shaders\SHIrradianceTypeless.hlsli" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Content\Shaders\CSCopyVolumeDrawArg.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Content\Shaders\CSTemporalAA.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
@@ -222,10 +221,10 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </EntryPointName>
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Vd /Zi /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /auto-binding-space 0</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Zi /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0 /Qembed_debug</Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)%(Filename).cso</Outputs>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)%(Filename).cso</Outputs>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Vd /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /auto-binding-space 0</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(ProjectDir)dxc\dxc.exe" /I "$(ProjectDir)Content" /I "$(ProjectDir)XUSG\Shaders" /Fo"$(OutDir)%(Filename).cso" /T"lib_6_8" /nologo "%(FullPath)" /all_resources_bound /auto-binding-space 0</Command>
     </CustomBuild>
     <FxCompile Include="Content\Shaders\PSBasePass.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
@@ -271,8 +270,8 @@ COPY /Y "$(ProjectDir)XUSG\Bin\$(Platform)\$(Configuration)\*.dll" "$(ProjectDir
       </EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </EntryPointName>
-      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/auto-binding-space 0</AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/auto-binding-space 0</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/auto-binding-space 0 /Qembed_debug </AdditionalOptions>
     </FxCompile>
     <FxCompile Include="Content\Shaders\VSBasePass.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>

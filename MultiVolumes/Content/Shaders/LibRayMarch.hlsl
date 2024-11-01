@@ -3,19 +3,29 @@
 //--------------------------------------------------------------------------------------
 
 #define _LIGHT_PASS_
+#define _NO_ARRAY_INDEXING_
 #include "RayMarch.hlsli"
 #include "VolumeCull.hlsli"
 
-#define DIV_UP(x, n) (((x) - 1) / (n) + 1)
+#define DIV_UP(x, n) (((x) + (n) - 1) / (n))
 
-//struct VolumeCullRecord
-//{
-//	uint3 DispatchGrid : SV_DispatchGrid;
-//};
+struct VolumeCullRecord
+{
+	uint BaseVolumeId;
+};
 
 struct RayMarchRecord
 {
-	uint3 DispatchGrid : SV_DispatchGrid;
+	uint2 DispatchGrid : SV_DispatchGrid;
+	uint VolumeId;
+	uint MipLevel;	// Mip level
+	uint SmpCount;	// Ray sample count
+	uint MaskBits;	// Highest bit in the uint16: render scheme, lowest 6 bits: cube-face visibility mask 
+	uint VolTexId;	// Volume texture Id
+};
+
+struct VolumeOutRecord
+{
 	uint VolumeId;
 	uint MipLevel;	// Mip level
 	uint SmpCount;	// Ray sample count
@@ -24,98 +34,104 @@ struct RayMarchRecord
 };
 
 //--------------------------------------------------------------------------------------
-// Estimate visible pixels of the cube map
-//--------------------------------------------------------------------------------------
-float EstimateCubeMapVisiblePixels(uint faceMask, uint mipLevel, uint cubeMapSize)
-{
-	return EstimateCubeMapVisiblePixels(faceMask, cubeMapSize >> mipLevel);
-}
-
-//--------------------------------------------------------------------------------------
 // Main compute shader for volume culling
 //--------------------------------------------------------------------------------------
 [Shader("node")]
-[NodeLaunch("Broadcasting")]
-[NodeMaxDispatchGrid(64, 64, 64)]
-[NumThreads(8, GROUP_VOLUME_COUNT, 1)]
-void VolumeCull(uint2 GTid : SV_GroupThreadID, uint Gid : SV_GroupID,
-	//DispatchNodeInputRecord<VolumeCullRecord> input,
-	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarchNode
-	)
+[NodeLaunch("broadcasting")]
+[NodeDispatchGrid(1, 1, 1)]
+[numthreads(8, GROUP_VOLUME_COUNT, 1)]
+void VolumeCull(uint Gid : SV_GroupID,
+	DispatchNodeInputRecord<VolumeCullRecord> input,
+	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarch)
 {
 	uint2 structInfo;
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
-
-	const uint volumeId = Gid * GROUP_VOLUME_COUNT + GTid.y;
-	if (volumeId >= structInfo.x) return;
-
-	const PerObject perObject = g_roPerObject[volumeId];
 
 	uint2 wTid;
 	wTid.x = WaveGetLaneIndex() % 8;
 	wTid.y = WaveGetLaneIndex() / 8;
 
-	// Project vertex to viewport space
-	const float4 v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
+	const uint volumeId = Gid * GROUP_VOLUME_COUNT + wTid.y;
 
-	// If any vertices are inside viewport
-	const bool isInView = all(v.xy <= g_viewport && v.xy >= 0.0) && v.z > 0.0 && v.z < 1.0;
-	const uint waveMask = WaveActiveBallot(isInView).x;
-	const uint volumeVis = (waveMask >> (8 * wTid.y)) & 0xff;
-	//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
+	PerObject perObject = (PerObject)0;
+	float3 v = 0.0;
 
-	// Viewport-visibility culling
-	if (volumeVis == 0) return;
+	uint volumeVis = 0;
+	if (volumeId < structInfo.x)
+	{
+		perObject = g_roPerObject[volumeId];
+
+		// Project vertex to viewport space
+		v = ProjectToViewport(wTid.x, perObject.WorldViewProj, g_viewport);
+
+		// If any vertices are inside viewport
+		const bool isInView = all(and(v.xy <= g_viewport, v.xy >= 0.0)) && (v.z > 0.0 && v.z < 1.0);
+		const uint waveMask = WaveActiveBallot(isInView).x;
+		volumeVis = (waveMask >> (8 * wTid.y)) & 0xff;
+		//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
+	}
+	//else volumeVis = 0;
 
 	VolumeIn volumeIn = (VolumeIn)0;
-	uint raySampleCount;
-	if (wTid.x == 0)
+	uint raySampleCount = 0, faceMask = 0, cubeMapSize = 0, mipLevel = 0;
+	bool useCubeMap = true;
+
+	if (volumeVis)
 	{
-		volumeIn = g_roVolumes[volumeId];
-		raySampleCount = g_numSamples;
-	}
+		if (wTid.x == 0)
+		{
+			volumeIn = g_roVolumes[volumeId];
+			raySampleCount = g_numSamples;
+		}
 
-	// Visiblity mask
-	const uint baseLaneId = 8 * wTid.y;
-	const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid.x, baseLaneId);
+		// Visiblity mask
+		const uint baseLaneId = 8 * wTid.y;
+		faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid.x, baseLaneId);
 
-	// Get per-lane edges
-	const float4 ep = GetCubeEdgePairPerLane(v.xy, wTid.x, baseLaneId);
+		// Get per-lane edges
+		const float4 ep = GetCubeEdgePairPerLane(v.xy, wTid.x, baseLaneId);
 
-	// Cube map LOD
-	const uint cubeMapSize = GetCubeMapSize(volumeIn);
-	const uint mipLevel = EstimateCubeMapLOD(raySampleCount, GetNumMips(volumeIn), cubeMapSize, ep, wTid);
+		// Cube map LOD
+		cubeMapSize = GetCubeMapSize(volumeIn);
+		mipLevel = EstimateCubeMapLOD(raySampleCount, GetNumMips(volumeIn), cubeMapSize, ep, wTid);
 
-	// Volume projection coverage
-	const float projCov = EstimateProjCoverage(ep, wTid, faceMask, baseLaneId);
-
-	if (wTid.x == 0)
-	{
-		// Visible pixels of the cube map
-		const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
-		const bool useCubeMap = cubeMapPix <= projCov;
-		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
-
-		const uint volTexId = GetSourceTextureId(volumeIn);
+		// Volume projection coverage
+		const float projCov = EstimateProjCoverage(ep, wTid, faceMask, baseLaneId);
 
 #if _ADAPTIVE_RAYMARCH_
-		if (useCubeMap)
-#endif
+		if (wTid.x == 0)
 		{
-			ThreadNodeOutputRecords<RayMarchRecord> outRec = RayMarchNode.GetThreadNodeOutputRecords(1);
+			// Visible pixels of the cube map
+			const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
+			useCubeMap = cubeMapPix <= projCov;
+		}
+#endif
+	}
+
+	const bool needOutput = volumeVis && wTid.x == 0;
+	ThreadNodeOutputRecords<RayMarchRecord> rayMarchOutRec = RayMarch.GetThreadNodeOutputRecords(needOutput && useCubeMap ? 1 : 0);
+
+	if (needOutput)
+	{
+		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
+		const uint volTexId = GetSourceTextureId(volumeIn);
+
+		if (useCubeMap)
+		{
 			const uint mipCubeMapSize = cubeMapSize >> mipLevel;
-			outRec.Get().DispatchGrid = uint3(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 4), 1);
-			outRec.Get().VolumeId = volumeId;
-			outRec.Get().MipLevel = mipLevel;
-			outRec.Get().SmpCount = raySampleCount;
-			outRec.Get().MaskBits = maskBits;
-			outRec.Get().VolTexId = volTexId;
-			outRec.OutputComplete();
+			rayMarchOutRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 4));
+			rayMarchOutRec.Get().VolumeId = volumeId;
+			rayMarchOutRec.Get().MipLevel = mipLevel;
+			rayMarchOutRec.Get().SmpCount = raySampleCount;
+			rayMarchOutRec.Get().MaskBits = maskBits;
+			rayMarchOutRec.Get().VolTexId = volTexId;
 		}
 
 		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
 	}
+
+	rayMarchOutRec.OutputComplete();
 }
 
 //--------------------------------------------------------------------------------------
@@ -184,10 +200,10 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 // Compute Shader
 //--------------------------------------------------------------------------------------
 [Shader("node")]
-[NodeLaunch("Broadcasting")]
-[NodeMaxDispatchGrid(64, 64, 64)]
-[NumThreads(8, 4, 6)]
-void RayMarchNode(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
+[NodeLaunch("broadcasting")]
+[NodeMaxDispatchGrid(32, 64, 1)]
+[numthreads(8, 4, 6)]
+void RayMarch(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
 	DispatchNodeInputRecord<RayMarchRecord> input)
 {
 	uint volumeId = input.Get().VolumeId;

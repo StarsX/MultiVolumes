@@ -70,8 +70,6 @@ MultiRayCaster::MultiRayCaster() :
 	m_workGraphSupport(true)
 {
 	m_shaderLib = ShaderLib::MakeUnique();
-
-	AccelerationStructure::SetUAVCount(2);
 }
 
 MultiRayCaster::~MultiRayCaster()
@@ -87,7 +85,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	m_graphicsPipelineLib = Graphics::PipelineLib::MakeUnique(pDevice);
 	m_computePipelineLib = Compute::PipelineLib::MakeUnique(pDevice);
 	m_workGraphPipelineLib = WorkGraph::PipelineLib::MakeUnique(pDevice);
-	m_pipelineLayoutLib = PipelineLayoutLib::MakeUnique(pDevice);
+	m_pipelineLayoutLib = Ultimate::PipelineLayoutLib::MakeUnique(pDevice);
 	m_descriptorTableLib = descriptorTableLib;
 	m_rtSupport = rtSupport;
 	m_workGraphSupport = workGraphSupport;
@@ -103,8 +101,7 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	{
 		m_volumes[i] = Texture3D::MakeUnique();
 		XUSG_N_RETURN(m_volumes[i]->Create(pDevice, gridSize, gridSize, gridSize, Format::R16G16B16A16_FLOAT,
-			ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::ALLOW_SIMULTANEOUS_ACCESS, 1,
-			MemoryFlag::NONE, (L"Volume" + to_wstring(i)).c_str()), false);
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, 1, MemoryFlag::NONE, (L"Volume" + to_wstring(i)).c_str()), false);
 	}
 
 	m_cubeMaps.resize(numVolumes);
@@ -136,10 +133,6 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	XUSG_N_RETURN(m_cbPerObject->Create(pDevice, sizeof(CBPerObject[FrameCount]), FrameCount,
 		nullptr, MemoryType::UPLOAD, L"RayCaster.CBPerObject"), false);*/
 
-	// Create pipelines
-	XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
-	XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
-
 	// create command layout
 	XUSG_N_RETURN(createCommandLayouts(pDevice), false);
 
@@ -154,12 +147,21 @@ bool MultiRayCaster::Init(RayTracing::CommandList* pCommandList, const Descripto
 	if (m_rtSupport)
 	{
 		XUSG_N_RETURN(buildAccelerationStructures(pCommandList, pGeometry), false);
-		//XUSG_N_RETURN(createDescriptorTables(nullptr), false); // included in buildAccelerationStructures()
+		XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
+		XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
+		XUSG_N_RETURN(createDescriptorTables(nullptr), false);
 		XUSG_N_RETURN(buildShaderTables(pDevice), false);
 	}
-	else XUSG_N_RETURN(createDescriptorTables(nullptr), false);
+	else
+	{
+		// Create pipelines and descriptor tables
+		XUSG_N_RETURN(createPipelineLayouts(pDevice), false);
+		XUSG_N_RETURN(createPipelines(rtFormat, dsFormat), false);
+		XUSG_N_RETURN(createDescriptorTables(nullptr), false);
+	}
 
 	if (m_workGraphSupport) initWorkGraph(pDevice);
+
 	return true;
 }
 
@@ -185,8 +187,9 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-	ResourceBarrier barrier;
-	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	XUSG::ResourceBarrier barrier;
+	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	pCommandList->Barrier(numBarriers, &barrier);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[LOAD_VOLUME_DATA]);
@@ -199,6 +202,9 @@ bool MultiRayCaster::LoadVolumeData(XUSG::CommandList* pCommandList, uint32_t i,
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4));
 
+	numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::ALL_SHADER_RESOURCE);
+	pCommandList->Barrier(numBarriers, &barrier);
+
 	return true;
 }
 
@@ -210,7 +216,7 @@ bool MultiRayCaster::SetRenderTargets(const XUSG::Device* pDevice, const RenderT
 	const auto height = depths[DEPTH_MAP]->GetHeight();
 
 	m_depth = DepthStencil::MakeUnique();
-	XUSG_N_RETURN(m_depth->Create(pDevice, width, height, Format::D32_FLOAT, ResourceFlag::NONE,
+	XUSG_N_RETURN(m_depth->Create(pDevice, width, height, Format::D32_FLOAT, ResourceFlag::DENY_SHADER_RESOURCE,
 		1, 1, 1, 1.0f, 0, false, MemoryFlag::NONE, L"DepthIncCubes"), false);
 
 	return SetViewport(pDevice, width, height, pColorOut);
@@ -234,13 +240,14 @@ bool MultiRayCaster::SetViewport(const XUSG::Device* pDevice, uint32_t width, ui
 	return true;
 }
 
-void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint32_t i)
+void MultiRayCaster::InitVolumeData(XUSG::CommandList* pCommandList, uint32_t i)
 {
 	const auto descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 	pCommandList->SetDescriptorHeaps(1, &descriptorHeap);
 
-	ResourceBarrier barrier;
-	m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	XUSG::ResourceBarrier barrier;
+	auto numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::UNORDERED_ACCESS);
+	pCommandList->Barrier(numBarriers, &barrier);
 
 	// Set pipeline state
 	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[INIT_VOLUME_DATA]);
@@ -251,6 +258,9 @@ void MultiRayCaster::InitVolumeData(const XUSG::CommandList* pCommandList, uint3
 
 	// Dispatch grid
 	pCommandList->Dispatch(XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4), XUSG_DIV_UP(m_gridSize, 4));
+
+	numBarriers = m_volumes[i]->SetBarrier(&barrier, ResourceState::ALL_SHADER_RESOURCE);
+	pCommandList->Barrier(numBarriers, &barrier);
 }
 
 void MultiRayCaster::SetSH(const StructuredBuffer::sptr& coeffSH)
@@ -362,7 +372,7 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frame
 		traceCube(pCommandList, frameIndex, pColorOut);
 		break;
 	case OIT_RAY_QUERY:
-		renderDepth(pCommandList, frameIndex);
+		renderDepth(pCommandList, frameIndex, useWorkGraph);
 		renderCubeRT(pCommandList, frameIndex, pColorOut);
 		break;
 	default:
@@ -448,7 +458,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 	const auto pDevice = pCommandList->GetDevice();
 
 	{
-		uint32_t firstSRVElements[FrameCount];
+		uintptr_t firstSRVElements[FrameCount];
 		for (uint8_t i = 0; i < FrameCount; ++i) firstSRVElements[i] = numVolumes * i;
 
 		m_perObject = StructuredBuffer::MakeUnique();
@@ -511,7 +521,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 			Format::R16G16B16A16_UINT, ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT,
 			1, nullptr, 1, nullptr, MemoryFlag::NONE, L"RayCaster.VolumeAttributes"), false);
 
-		m_volumeDispatchArg = RawBuffer::MakeUnique();
+		m_volumeDispatchArg = Buffer::MakeUnique();
 		XUSG_N_RETURN(m_volumeDispatchArg->Create(pDevice, sizeof(uint32_t[3]),
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
 			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDispatchArg"), false);
@@ -520,10 +530,11 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 		uploaders.emplace_back(Resource::MakeUnique());
 		XUSG_N_RETURN(m_volumeDispatchArg->Upload(pCommandList, uploaders.back().get(), pDispatchReset, sizeof(uint32_t[3])), false);
 
-		m_volumeDrawArg = RawBuffer::MakeUnique();
+		m_volumeDrawArg = Buffer::MakeUnique();
 		XUSG_N_RETURN(m_volumeDrawArg->Create(pDevice, sizeof(uint32_t[5]),
-			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
-			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDrawArg"), false);
+			ResourceFlag::DENY_SHADER_RESOURCE | ResourceFlag::ALLOW_UNORDERED_ACCESS,
+			MemoryType::DEFAULT, 0, nullptr, 0, nullptr, MemoryFlag::NONE,
+			L"RayCaster.VisibleVolumeDrawArg"), false);
 
 		const uint32_t pDrawReset[] = { 36, 0, 0, 0, 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -627,7 +638,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetConstants(8, 1, 1);
 		pipelineLayout->SetStaticSamplers(pSamplers, static_cast<uint32_t>(size(pSamplers)), 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_MARCH_WG], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
-			PipelineLayoutFlag::NONE, L"ViewSpaceRayMarchingLayout"), false);
+			PipelineLayoutFlag::NONE, L"WorkGraphRayMarchingLayout"), false);
 	}
 
 	// Cube depth peeling
@@ -736,6 +747,15 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 			PipelineLayoutFlag::NONE, L"RayTracingLayout"), false);
 	}
 
+	// Copy volume draw arg
+	{
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRootUAV(0, 0);
+		pipelineLayout->SetRootSRV(1, 0);
+		XUSG_X_RETURN(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
+			PipelineLayoutFlag::NONE, L"CopyVolumeDrawArgLayout"), false);
+	}
+
 	return true;
 }
 
@@ -800,13 +820,18 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 	{
 		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::CS, csIndex, L"LibRayMarch.cso"), false);
 		static const wchar_t* workGraphName = L"RayMarchGraph";
-		static const wchar_t* shaders[] = { L"VolumeCull", L"RayMarchNode" };
+		static const wchar_t* shaderNames[] = { L"VolumeCull", L"RayMarch" };
+
+		const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
+		const uint32_t dispatchGrid = XUSG_DIV_UP(numVolumes, GROUP_VOLUME_COUNT);
 
 		const auto state = WorkGraph::State::MakeUnique();
-		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++),
-			static_cast<uint32_t>(size(shaders)), reinterpret_cast<const void**>(shaders));
-		state->SetProgram(workGraphName);
+		//state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++),
+			//static_cast<uint32_t>(size(shaderNames)), shaderNames);
+		state->SetShaderLibrary(0, m_shaderLib->GetShader(Shader::Stage::CS, csIndex++));
+		state->SetProgramName(workGraphName);
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
+		state->OverrideDispatchGrid(shaderNames[0], dispatchGrid, 1, 1, WorkGraph::BoolOverride::IS_TRUE);
 		XUSG_X_RETURN(m_pipelines[RAY_MARCH_WG], state->GetPipeline(m_workGraphPipelineLib.get(), L"RayMarchingGraph"), false);
 
 		m_rayMarchGraph.Index = state->GetWorkGraphIndex(workGraphName);
@@ -818,7 +843,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		m_rayMarchGraph.RecordByteSizes.resize(m_rayMarchGraph.NumEntrypoints);
 		for (auto i = 0u; i < m_rayMarchGraph.NumEntrypoints; ++i)
 		{
-			m_rayMarchGraph.EntrypointIndices[i] = i;// state->GetEntrypointIndex(m_rayMarchGraph.Index, { shaderNames[0], 0 });
+			m_rayMarchGraph.EntrypointIndices[i] = i;//state->GetEntrypointIndex(m_rayMarchGraph.Index, { shaderNames[0], 0 });
 			m_rayMarchGraph.RecordByteSizes[i] = state->GetEntrypointRecordSizeInBytes(m_rayMarchGraph.Index, i);
 		}
 	}
@@ -915,6 +940,16 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		state->SetGlobalPipelineLayout(m_pipelineLayouts[RAY_TRACING]);
 		state->SetMaxRecursionDepth(1);
 		XUSG_X_RETURN(m_pipelines[RAY_TRACING], state->GetPipeline(m_rayTracingPipelineLib.get(), L"Raytracing"), false);
+	}
+
+	// Copy volume draw arg
+	{
+		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::CS, csIndex, L"CSCopyVolumeDrawArg.cso"), false);
+
+		const auto state = Compute::State::MakeUnique();
+		state->SetPipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
+		state->SetShader(m_shaderLib->GetShader(Shader::Stage::CS, csIndex++));
+		XUSG_X_RETURN(m_pipelines[COPY_VOLUME_DRAW_ARG], state->GetPipeline(m_computePipelineLib.get(), L"CopyVolumeDrawArg"), false);
 	}
 
 	return true;
@@ -1152,38 +1187,32 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 	XUSG_N_RETURN(m_topLevelAS->Prebuild(pDevice, numVolumes), false);
 
 	// Allocate AS buffers
-	// Descriptor indices in the descriptor heap
-	const auto bottomLevelASIndex = 0u;
-	const auto topLevelASIndex = bottomLevelASIndex + 1;
-	XUSG_N_RETURN(m_bottomLevelAS->Allocate(pDevice, bottomLevelASIndex), false);
-	XUSG_N_RETURN(m_topLevelAS->Allocate(pDevice, topLevelASIndex), false);
+	XUSG_N_RETURN(m_bottomLevelAS->Allocate(pDevice, m_descriptorTableLib.get()), false);
+	XUSG_N_RETURN(m_topLevelAS->Allocate(pDevice, m_descriptorTableLib.get()), false);
 
 	// Create scratch buffer
-	auto scratchSize = m_topLevelAS->GetScratchDataMaxSize();
-	scratchSize = (max)(m_bottomLevelAS->GetScratchDataMaxSize(), scratchSize);
-	m_scratch = Resource::MakeUnique();
+	auto scratchSize = m_topLevelAS->GetScratchDataByteSize();
+	scratchSize = (max)(m_bottomLevelAS->GetScratchDataByteSize(), scratchSize);
+	m_scratch = Buffer::MakeUnique();
 	XUSG_N_RETURN(AccelerationStructure::AllocateUAVBuffer(pDevice, m_scratch.get(), scratchSize), false);
-
-	// Get descriptor pool and create descriptor tables
-	XUSG_N_RETURN(createDescriptorTables(nullptr), false);
-	const auto& descriptorHeap = m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP);
 
 	// Set instance
 	vector<float*> transforms(numVolumes);
 	for (auto i = 0u; i < numVolumes; ++i)
 		transforms[i] = reinterpret_cast<float*>(&m_volumeWorlds[i]);
-	m_instances = Resource::MakeUnique();
+	m_instances = Buffer::MakeUnique();
 	vector<const BottomLevelAS*> pBottomLevelASs(numVolumes, m_bottomLevelAS.get());
 	TopLevelAS::SetInstances(pDevice, m_instances.get(), numVolumes, pBottomLevelASs.data(), transforms.data());
 
-	// Build bottom level ASs
+	// Build bottom level ASes
 	m_bottomLevelAS->Build(pCommandList, m_scratch.get());
 
-	const ResourceBarrier barrier = { nullptr, ResourceState::UNORDERED_ACCESS };
+	const XUSG::ResourceBarrier barrier = { nullptr, ResourceState::UNORDERED_ACCESS };
 	pCommandList->Barrier(1, &barrier);
 
 	// Build top level AS
-	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(), descriptorHeap);
+	m_topLevelAS->Build(pCommandList, m_scratch.get(), m_instances.get(),
+		m_descriptorTableLib->GetDescriptorHeap(CBV_SRV_UAV_HEAP));
 
 	return true;
 }
@@ -1191,22 +1220,22 @@ bool MultiRayCaster::buildAccelerationStructures(RayTracing::CommandList* pComma
 bool MultiRayCaster::buildShaderTables(const RayTracing::Device* pDevice)
 {
 	// Get shader identifiers.
-	const auto shaderIDSize = ShaderRecord::GetShaderIDSize(pDevice);
+	const auto shaderIdentifierSize = ShaderRecord::GetShaderIdentifierSize(pDevice);
 
 	// Ray gen shader table
 	m_rayGenShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_rayGenShaderTable->Create(pDevice, 1, shaderIDSize, L"RayGenShaderTable"), false);
-	XUSG_N_RETURN(m_rayGenShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], RaygenShaderName).get()), false);
+	XUSG_N_RETURN(m_rayGenShaderTable->Create(pDevice, 1, shaderIdentifierSize, MemoryFlag::NONE, L"RayGenShaderTable"), false);
+	m_rayGenShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], RaygenShaderName).get());
 
 	// Hit group shader table
 	m_hitGroupShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_hitGroupShaderTable->Create(pDevice, 1, shaderIDSize, L"HitGroupShaderTable"), false);
-	XUSG_N_RETURN(m_hitGroupShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], HitGroupName).get()), false);
+	XUSG_N_RETURN(m_hitGroupShaderTable->Create(pDevice, 1, shaderIdentifierSize, MemoryFlag::NONE, L"HitGroupShaderTable"), false);
+	m_hitGroupShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], HitGroupName).get());
 
 	// Miss shader table
 	m_missShaderTable = ShaderTable::MakeUnique();
-	XUSG_N_RETURN(m_missShaderTable->Create(pDevice, 1, shaderIDSize, L"MissShaderTable"), false);
-	XUSG_N_RETURN(m_missShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], MissShaderName).get()), false);
+	XUSG_N_RETURN(m_missShaderTable->Create(pDevice, 1, shaderIdentifierSize, MemoryFlag::NONE, L"MissShaderTable"), false);
+	m_missShaderTable->AddShaderRecord(ShaderRecord::MakeUnique(pDevice, m_pipelines[RAY_TRACING], MissShaderName).get());
 
 	return true;
 }
@@ -1214,7 +1243,7 @@ bool MultiRayCaster::buildShaderTables(const RayTracing::Device* pDevice)
 void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	ResourceBarrier barriers[5];
+	XUSG::ResourceBarrier barriers[5];
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_cubeMapVolumeCounter->SetBarrier(barriers, ResourceState::COPY_DEST,
@@ -1232,8 +1261,6 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 		numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_cubeMapVolumes->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS,
 		numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS, numBarriers);
-	numBarriers = m_cubeMapVolumeCounter->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Set pipeline state
@@ -1253,11 +1280,12 @@ void MultiRayCaster::cullVolumes(XUSG::CommandList* pCommandList, uint8_t frameI
 
 bool MultiRayCaster::initWorkGraph(const XUSG::Device* pDevice)
 {
-	const auto backingMemSize = m_rayMarchGraph.MemRequirments.MaxByteSize;
-	m_rayMarchGraph.BackingMemory = RawBuffer::MakeUnique();
+	const auto& backingMemSize = m_rayMarchGraph.MemRequirments.MaxByteSize;
+	m_rayMarchGraph.BackingMemory = Buffer::MakeUnique();
 	XUSG_N_RETURN(m_rayMarchGraph.BackingMemory->Create(pDevice, backingMemSize,
-		ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT, 1, nullptr,
-		1, nullptr, MemoryFlag::NONE, L"WorkGraph.BackingMemory"), false);
+		ResourceFlag::ALLOW_UNORDERED_ACCESS | ResourceFlag::DENY_SHADER_RESOURCE,
+		MemoryType::DEFAULT, 0, nullptr, 0, nullptr, MemoryFlag::NONE,
+		L"WorkGraph.BackingMemory"), false);
 
 	return true;
 }
@@ -1265,7 +1293,7 @@ bool MultiRayCaster::initWorkGraph(const XUSG::Device* pDevice)
 void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + 3);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + 3);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(),
 		ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
@@ -1295,7 +1323,7 @@ void MultiRayCaster::rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
 	auto numBarriers = m_volumeDispatchArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_cubeMapVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_SOURCE, numBarriers);
@@ -1336,16 +1364,18 @@ void MultiRayCaster::rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameInd
 void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	static vector<ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 4);
+	static vector<XUSG::ResourceBarrier> barriers(m_lightMaps.size() + m_cubeMaps.size() + m_cubeDepths.size() + 5);
 	auto numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_DEST);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
 	// Reset counter
 	pCommandList->CopyResource(m_visibleVolumeCounter.get(), m_counterReset.get());
 
+	static auto isFirstFrame = true;
+	const auto workGraphFlag = isFirstFrame ? WorkGraphFlag::INITIALIZE : WorkGraphFlag::NONE;
+
 	// Set barriers
-	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
-		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
 		numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_pDepths[DEPTH_MAP]->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
@@ -1356,24 +1386,13 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 	for (auto& cubeDepth : m_cubeDepths)
 		numBarriers = cubeDepth->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS, numBarriers);
+	if (isFirstFrame)
+		numBarriers = m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
+			numBarriers, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	pCommandList->Barrier(numBarriers, barriers.data());
 
-	// Set pipeline state
-	static auto isFirstFrame = true;
-	if (isFirstFrame)
-	{
-		m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS); // Promotion
-		pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, WorkGraphFlag::INITIALIZE,
-			m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.BackingMemory->GetWidth());
-		numBarriers = m_rayMarchGraph.BackingMemory->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
-		pCommandList->Barrier(numBarriers, barriers.data());
-		isFirstFrame = false;
-	}
-	else pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, WorkGraphFlag::NONE,
-		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.BackingMemory->GetWidth());
-	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
-
 	// Set descriptor tables
+	pCommandList->SetComputePipelineLayout(m_pipelineLayouts[RAY_MARCH_WG]);
 	pCommandList->SetComputeDescriptorTable(0, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetComputeDescriptorTable(1, m_uavTables[UAV_TABLE_CULL]);
 	pCommandList->SetComputeDescriptorTable(2, m_uavTables[UAV_TABLE_CUBE_MAP]);
@@ -1384,9 +1403,13 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_DEPTH]);
 	pCommandList->SetCompute32BitConstant(8, m_maxRaySamples);
 
+	// Set pipeline state
+	assert(m_rayMarchGraph.BackingMemory->GetWidth() >= m_rayMarchGraph.MemRequirments.MaxByteSize);
+	//pCommandList->SetStateObject(m_pipelines[RAY_MARCH_WG]);
+	pCommandList->SetProgram(ProgramType::WORK_GRAPH, m_rayMarchGraph.Identifier, workGraphFlag,
+		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MaxByteSize);
+
 	// Dispatch work graph
-	const uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
-	const uint32_t disPatchGrid[] = { XUSG_DIV_UP(numVolumes, GROUP_VOLUME_COUNT), 1, 1 };
 	static vector<vector<uint8_t>> inputData(m_rayMarchGraph.NumEntrypoints);
 	static vector<NodeCPUInput> nodeInputs(m_rayMarchGraph.NumEntrypoints);
 	for (auto i = 0u; i < m_rayMarchGraph.NumEntrypoints; ++i)
@@ -1401,8 +1424,8 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 		const auto sizeRecords = nodeInput.RecordByteStride * nodeInput.NumRecords;
 		if (sizeRecords > 0)
 		{
-			records.resize(sizeRecords);
-			memcpy(records.data(), disPatchGrid, sizeof(disPatchGrid));
+			records.resize(sizeRecords, 0);
+			// Copy input record data ...
 			nodeInput.pRecords = records.data();
 		}
 	}
@@ -1411,24 +1434,25 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 
 	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::COPY_SOURCE);
+	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE, numBarriers);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
-	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+
+	isFirstFrame = false;
 }
 
 void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	ResourceBarrier barriers[3];
+	XUSG::ResourceBarrier barriers[3];
 	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
 	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
 	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
 
 	// Set barriers
 	numBarriers = m_kDepths->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
@@ -1458,21 +1482,39 @@ void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t fram
 	pCommandList->ExecuteIndirect(m_commandLayouts[DRAW_LAYOUT].get(), 1, m_volumeDrawArg.get());
 }
 
-void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph)
 {
-	// Set barriers
-	ResourceBarrier barriers[3];
-	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
-		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers);
+	XUSG::ResourceBarrier barriers[2];
+	if (useWorkGraph)
+	{
+		// Workaround for work-graph path
+		// Set barriers
+		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS,
+			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
+		pCommandList->Barrier(numBarriers, barriers);
 
-	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t[1]), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+		// Copy counter to instance count
+		pCommandList->SetComputePipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetPipelineState(m_pipelines[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetComputeRootUnorderedAccessView(0, m_volumeDrawArg.get(), sizeof(uint32_t));
+		pCommandList->SetComputeRootShaderResourceView(1, m_visibleVolumeCounter.get());
+		pCommandList->Dispatch(1, 1, 1);
+	}
+	else
+	{
+		// Set barriers
+		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
+			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
+		pCommandList->Barrier(numBarriers, barriers);
+
+		// Copy counter to instance count
+		pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	}
 
 	// Set barriers
-	numBarriers = m_depth->SetBarrier(barriers, ResourceState::DEPTH_WRITE);
-	numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT, numBarriers);
+	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
 
@@ -1499,7 +1541,7 @@ void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameI
 void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 2);
 	auto numBarriers = m_kColors->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	numBarriers = m_kDepths->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeMap : m_cubeMaps)
@@ -1537,8 +1579,8 @@ void MultiRayCaster::renderCube(XUSG::CommandList* pCommandList, uint8_t frameIn
 void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, RenderTarget* pOutView)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
-	auto numBarriers = m_depth->SetBarrier(barriers.data(), ResourceState::DEPTH_READ);
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size());
+	auto numBarriers = 0u;
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::PIXEL_SHADER_RESOURCE, numBarriers);
 	for (auto& cubeDepth : m_cubeDepths)
@@ -1555,7 +1597,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 	// Set descriptor tables
 	pCommandList->SetGraphicsDescriptorTable(0, m_cbvSrvTables[frameIndex]);
 	pCommandList->SetGraphicsDescriptorTable(1, m_srvTables[SRV_TABLE_VIS_VOLUMES]);
-	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetResource().get());
+	pCommandList->SetGraphicsRootShaderResourceView(2, m_topLevelAS->GetVirtualAddress());
 	pCommandList->SetGraphicsDescriptorTable(3, m_srvTables[SRV_TABLE_VOLUME_ATTRIBS]);
 	pCommandList->SetGraphicsDescriptorTable(4, m_srvTables[SRV_TABLE_VOLUME]);
 	pCommandList->SetGraphicsDescriptorTable(5, m_srvTables[SRV_TABLE_DEPTH]);
@@ -1570,7 +1612,7 @@ void MultiRayCaster::renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frame
 void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set barrier
-	ResourceBarrier barrier;
+	XUSG::ResourceBarrier barrier;
 	const auto numBarriers = m_kColors->SetBarrier(&barrier, ResourceState::PIXEL_SHADER_RESOURCE);
 	pCommandList->Barrier(numBarriers, &barrier);
 
@@ -1590,7 +1632,7 @@ void MultiRayCaster::resolveOIT(XUSG::CommandList* pCommandList, uint8_t frameIn
 void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t frameIndex, Texture* pColorOut)
 {
 	// Set barriers
-	static vector<ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
+	static vector<XUSG::ResourceBarrier> barriers(m_cubeMaps.size() + m_cubeDepths.size() + 1);
 	auto numBarriers = pColorOut->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS);
 	for (auto& cubeMap : m_cubeMaps)
 		numBarriers = cubeMap->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
@@ -1609,6 +1651,6 @@ void MultiRayCaster::traceCube(RayTracing::CommandList* pCommandList, uint8_t fr
 	pCommandList->SetComputeDescriptorTable(6, m_srvTables[SRV_TABLE_CUBE_MAP]);
 	pCommandList->SetComputeDescriptorTable(7, m_srvTables[SRV_TABLE_CUBE_DEPTH]);
 
-	pCommandList->DispatchRays(m_pipelines[RAY_TRACING], m_viewport.x, m_viewport.y, 1,
-		m_rayGenShaderTable.get(), m_hitGroupShaderTable.get(), m_missShaderTable.get());
+	pCommandList->SetRayTracingPipeline(m_pipelines[RAY_TRACING]);
+	pCommandList->DispatchRays(m_viewport.x, m_viewport.y, 1, m_rayGenShaderTable.get(), m_hitGroupShaderTable.get(), m_missShaderTable.get());
 }
