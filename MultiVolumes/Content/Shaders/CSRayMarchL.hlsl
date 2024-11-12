@@ -39,7 +39,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	// Identify if the current position is nonempty
 	uint volTexId = GetSourceTextureId(g_roVolumes[volumeId]);
 	const float3 uvw = LocalToTex3DSpace(rayOrigin.xyz);
-	//volTexId = WaveReadLaneAt(volTexId, 0);
+	volTexId = WaveReadLaneAt(volTexId, 0);
 
 	const PerObject perObject = g_roPerObject[volumeId];
 	const min16float density = GetSample(volTexId, uvw).w;
@@ -77,7 +77,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		for (uint n = 0; n < structInfo.x; ++n)
 		{
 			uint volTexId = GetSourceTextureId(g_roVolumes[n]);
-			//volTexId = WaveReadLaneAt(volTexId, 0);
+			volTexId = WaveReadLaneAt(volTexId, 0);
 
 			const PerObject perObject = g_roPerObject[n];
 			float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space

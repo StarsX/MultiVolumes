@@ -526,7 +526,7 @@ bool MultiRayCaster::createVolumeInfoBuffers(XUSG::CommandList* pCommandList, ui
 			ResourceFlag::DENY_SHADER_RESOURCE, MemoryType::DEFAULT, 0, nullptr,
 			0, nullptr, MemoryFlag::NONE, L"RayCaster.VisibleVolumeDispatchArg"), false);
 
-		const uint32_t pDispatchReset[] = { XUSG_DIV_UP(m_gridSize, 8), XUSG_DIV_UP(m_gridSize, 4), 0 };
+		const uint32_t pDispatchReset[] = { XUSG_DIV_UP(m_gridSize, 8), XUSG_DIV_UP(m_gridSize, 8), 0 };
 		uploaders.emplace_back(Resource::MakeUnique());
 		XUSG_N_RETURN(m_volumeDispatchArg->Upload(pCommandList, uploaders.back().get(), pDispatchReset, sizeof(uint32_t[3])), false);
 

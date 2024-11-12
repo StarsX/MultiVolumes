@@ -37,7 +37,7 @@ void main(uint Gid : SV_GroupID)
 	// Viewport-visibility culling
 	if (volumeVis == 0) return;
 
-	VolumeIn volumeIn = (VolumeIn)0;
+	VolumeIn volumeIn;
 	uint raySampleCount;
 	if (wTid.x == 0)
 	{
@@ -62,18 +62,17 @@ void main(uint Gid : SV_GroupID)
 	if (wTid.x == 0)
 	{
 		// Visible pixels of the cube map
+#if _ADAPTIVE_RAYMARCH_
 		const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
 		const bool useCubeMap = cubeMapPix <= projCov;
+#else
+		const bool useCubeMap = true;
+#endif
 		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
-
 		const uint volTexId = GetSourceTextureId(volumeIn);
+
+		if (useCubeMap) g_rwCubeMapVolumes.Append(volumeId);
 		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
-#if _ADAPTIVE_RAYMARCH_
-		if (useCubeMap) g_rwCubeMapVolumes.Append(volumeId);
-#else
-		g_rwCubeMapVolumes.Append(volumeId);
-#endif
-			
 	}
 }

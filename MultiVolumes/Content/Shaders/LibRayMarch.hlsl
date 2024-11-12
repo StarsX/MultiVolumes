@@ -56,7 +56,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 	PerObject perObject = (PerObject)0;
 	float3 v = 0.0;
 
-	uint volumeVis = 0;
+	uint volumeVis;
 	if (volumeId < structInfo.x)
 	{
 		perObject = g_roPerObject[volumeId];
@@ -68,12 +68,11 @@ void VolumeCull(uint Gid : SV_GroupID,
 		const bool isInView = all(and(v.xy <= g_viewport, v.xy >= 0.0)) && (v.z > 0.0 && v.z < 1.0);
 		const uint waveMask = WaveActiveBallot(isInView).x;
 		volumeVis = (waveMask >> (8 * wTid.y)) & 0xff;
-		//if (wTid.x == 0) g_rwVolumeVis[volumeId] = volumeVis;
 	}
-	//else volumeVis = 0;
+	else volumeVis = 0;
 
-	VolumeIn volumeIn = (VolumeIn)0;
-	uint raySampleCount = 0, faceMask = 0, cubeMapSize = 0, mipLevel = 0;
+	VolumeIn volumeIn;
+	uint cubeMapSize, mipLevel, raySampleCount, maskBits, volTexId;
 	bool useCubeMap = true;
 
 	if (volumeVis)
@@ -86,7 +85,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 
 		// Visiblity mask
 		const uint baseLaneId = 8 * wTid.y;
-		faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid.x, baseLaneId);
+		const uint faceMask = GenVisibilityMask(perObject.WorldI, g_eyePt, wTid.x, baseLaneId);
 
 		// Get per-lane edges
 		const float4 ep = GetCubeEdgePairPerLane(v.xy, wTid.x, baseLaneId);
@@ -98,14 +97,16 @@ void VolumeCull(uint Gid : SV_GroupID,
 		// Volume projection coverage
 		const float projCov = EstimateProjCoverage(ep, wTid, faceMask, baseLaneId);
 
-#if _ADAPTIVE_RAYMARCH_
 		if (wTid.x == 0)
 		{
 			// Visible pixels of the cube map
+#if _ADAPTIVE_RAYMARCH_
 			const float cubeMapPix = EstimateCubeMapVisiblePixels(faceMask, mipLevel, cubeMapSize);
 			useCubeMap = cubeMapPix <= projCov;
-		}
 #endif
+			maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
+			volTexId = GetSourceTextureId(volumeIn);
+		}
 	}
 
 	const bool needOutput = volumeVis && wTid.x == 0;
@@ -113,13 +114,10 @@ void VolumeCull(uint Gid : SV_GroupID,
 
 	if (needOutput)
 	{
-		const uint maskBits = useCubeMap ? (faceMask | CUBEMAP_RAYMARCH_BIT) : faceMask;
-		const uint volTexId = GetSourceTextureId(volumeIn);
-
 		if (useCubeMap)
 		{
 			const uint mipCubeMapSize = cubeMapSize >> mipLevel;
-			rayMarchOutRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 4));
+			rayMarchOutRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 8));
 			rayMarchOutRec.Get().VolumeId = volumeId;
 			rayMarchOutRec.Get().MipLevel = mipLevel;
 			rayMarchOutRec.Get().SmpCount = raySampleCount;
@@ -201,26 +199,24 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 //--------------------------------------------------------------------------------------
 [Shader("node")]
 [NodeLaunch("broadcasting")]
-[NodeMaxDispatchGrid(32, 64, 1)]
-[numthreads(8, 4, 6)]
+[NodeMaxDispatchGrid(32, 32, 1)]
+[numthreads(8, 8, 6)]
 void RayMarch(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
 	DispatchNodeInputRecord<RayMarchRecord> input)
 {
-	uint volumeId = input.Get().VolumeId;
+	const uint volumeId = input.Get().VolumeId;
 	VolumeInfo volumeInfo;
 	volumeInfo.MipLevel = input.Get().MipLevel;
 	volumeInfo.SmpCount = input.Get().SmpCount;
 	volumeInfo.VolTexId = input.Get().VolTexId;
-	volumeInfo.MaskBits = WaveReadLaneAt(input.Get().MaskBits, 0);
+	volumeInfo.MaskBits = input.Get().MaskBits;
 
-	if ((volumeInfo.MaskBits & (1u << GTid.z)) == 0) return;
+	const uint faceId = WaveReadLaneAt(GTid.z, 0);
+	if ((volumeInfo.MaskBits & (1u << faceId)) == 0) return;
 
-	//volumeId = WaveReadLaneAt(volumeId, 0);
 	const PerObject perObject = g_roPerObject[volumeId];
 	float3 rayOrigin = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 
-	//volumeInfo.MipLevel = WaveReadLaneAt(volumeInfo.MipLevel, 0);
-	volumeInfo.SmpCount = WaveReadLaneAt(volumeInfo.SmpCount, 0);
 	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
 	const float3 rayDir = normalize(target - rayOrigin);
@@ -235,7 +231,6 @@ void RayMarch(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID,
 	const float tMax = GetTMax(pos, rayOrigin, rayDir, perObject.WorldViewProjI);
 #endif
 
-	volumeInfo.VolTexId = WaveReadLaneAt(volumeInfo.VolTexId, 0);
 	const min16float stepScale = g_maxDist / min16float(volumeInfo.SmpCount);
 
 	// Transmittance

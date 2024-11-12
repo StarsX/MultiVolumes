@@ -74,20 +74,21 @@ float3 GetClipPos(float3 rayOrigin, float3 rayDir, matrix worldViewProj)
 //--------------------------------------------------------------------------------------
 // Compute Shader
 //--------------------------------------------------------------------------------------
-[numthreads(8, 4, 6)]
+[numthreads(8, 8, 6)]
 void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3 Gid : SV_GroupID)
 {
 	uint volumeId = g_roVisibleVolumes[Gid.z];
 	VolumeInfo volumeInfo = (VolumeInfo)g_roVolumes[volumeId];
 	volumeInfo.MaskBits = WaveReadLaneAt(volumeInfo.MaskBits, 0);
 
-	if ((volumeInfo.MaskBits & (1u << GTid.z)) == 0) return;
+	const uint faceId = WaveReadLaneAt(GTid.z, 0);
+	if ((volumeInfo.MaskBits & (1u << faceId)) == 0) return;
 
-	//volumeId = WaveReadLaneAt(volumeId, 0);
+	volumeId = WaveReadLaneAt(volumeId, 0);
 	const PerObject perObject = g_roPerObject[volumeId];
 	float3 rayOrigin = mul(float4(g_eyePt, 1.0), perObject.WorldI);
 
-	//volumeInfo.MipLevel = WaveReadLaneAt(volumeInfo.MipLevel, 0);
+	volumeInfo.MipLevel = WaveReadLaneAt(volumeInfo.MipLevel, 0);
 	volumeInfo.SmpCount = WaveReadLaneAt(volumeInfo.SmpCount, 0);
 	const uint uavIdx = NUM_CUBE_MIP * volumeId + volumeInfo.MipLevel;
 	const float3 target = GetLocalPos(DTid, GTid.z, g_rwCubeMaps[uavIdx]);
