@@ -376,7 +376,7 @@ void MultiRayCaster::Render(RayTracing::CommandList* pCommandList, uint8_t frame
 		renderCubeRT(pCommandList, frameIndex, pColorOut);
 		break;
 	default:
-		cubeDepthPeel(pCommandList, frameIndex);
+		cubeDepthPeel(pCommandList, frameIndex, useWorkGraph);
 		renderCube(pCommandList, frameIndex);
 		resolveOIT(pCommandList, frameIndex);
 	}
@@ -1432,9 +1432,9 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 
 	pCommandList->DispatchGraph(m_rayMarchGraph.NumEntrypoints, nodeInputs.data());
 
-	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::COPY_DEST,
+	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE | ResourceState::COPY_SOURCE, numBarriers);
+	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers.data(), ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	numBarriers = m_volumeAttribs->SetBarrier(barriers.data(), ResourceState::ALL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers.data());
@@ -1442,20 +1442,34 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 	isFirstFrame = false;
 }
 
-void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex)
+void MultiRayCaster::cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph)
 {
 	// Set barriers
 	XUSG::ResourceBarrier barriers[3];
-	auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
-		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-	numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
-	pCommandList->Barrier(numBarriers, barriers);
+	if (useWorkGraph)
+	{
+		// Workaround for work-graph path
+		// Copy counter to instance count
+		pCommandList->SetComputePipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetPipelineState(m_pipelines[COPY_VOLUME_DRAW_ARG]);
+		pCommandList->SetComputeRootUnorderedAccessView(0, m_volumeDrawArg.get(), sizeof(uint32_t));
+		pCommandList->SetComputeRootShaderResourceView(1, m_visibleVolumeCounter.get());
+		pCommandList->Dispatch(1, 1, 1);
+	}
+	else
+	{
+		// Set barriers
+		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::COPY_DEST,
+			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
+		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::COPY_SOURCE, numBarriers);
+		pCommandList->Barrier(numBarriers, barriers);
 
-	// Copy counter to instance count
-	pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+		// Copy counter to instance count
+		pCommandList->CopyBufferRegion(m_volumeDrawArg.get(), sizeof(uint32_t), m_visibleVolumeCounter.get(), 0, sizeof(uint32_t));
+	}
 
 	// Set barriers
-	numBarriers = m_kDepths->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
+	auto numBarriers = m_kDepths->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS);
 	numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::INDIRECT_ARGUMENT, numBarriers);
 	numBarriers = m_visibleVolumes->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
 	pCommandList->Barrier(numBarriers, barriers);
@@ -1488,12 +1502,6 @@ void MultiRayCaster::renderDepth(XUSG::CommandList* pCommandList, uint8_t frameI
 	if (useWorkGraph)
 	{
 		// Workaround for work-graph path
-		// Set barriers
-		auto numBarriers = m_volumeDrawArg->SetBarrier(barriers, ResourceState::UNORDERED_ACCESS,
-			0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
-		numBarriers = m_visibleVolumeCounter->SetBarrier(barriers, ResourceState::NON_PIXEL_SHADER_RESOURCE, numBarriers);
-		pCommandList->Barrier(numBarriers, barriers);
-
 		// Copy counter to instance count
 		pCommandList->SetComputePipelineLayout(m_pipelineLayouts[COPY_VOLUME_DRAW_ARG]);
 		pCommandList->SetPipelineState(m_pipelines[COPY_VOLUME_DRAW_ARG]);

@@ -146,7 +146,7 @@ protected:
 	void rayMarchL(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchV(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void rayMarchWG(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
-	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex);
+	void cubeDepthPeel(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph);
 	void renderDepth(XUSG::CommandList* pCommandList, uint8_t frameIndex, bool useWorkGraph);
 	void renderCube(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 	void renderCubeRT(XUSG::CommandList* pCommandList, uint8_t frameIndex, XUSG::RenderTarget* pColorOut);

@@ -42,7 +42,7 @@ struct VolumeOutRecord
 [numthreads(8, GROUP_VOLUME_COUNT, 1)]
 void VolumeCull(uint Gid : SV_GroupID,
 	DispatchNodeInputRecord<VolumeCullRecord> input,
-	[MaxRecords(1)] NodeOutput<RayMarchRecord> RayMarch)
+	[MaxRecords(GROUP_VOLUME_COUNT)] NodeOutput<RayMarchRecord> RayMarch)
 {
 	uint2 structInfo;
 	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
@@ -110,26 +110,30 @@ void VolumeCull(uint Gid : SV_GroupID,
 	}
 
 	const bool needOutput = volumeVis && wTid.x == 0;
-	ThreadNodeOutputRecords<RayMarchRecord> rayMarchOutRec = RayMarch.GetThreadNodeOutputRecords(needOutput && useCubeMap ? 1 : 0);
+	//useCubeMap = needOutput && useCubeMap;
+	//const uint recordCount = WaveActiveCountBits(useCubeMap);
+	const uint recordCount = WaveActiveCountBits(needOutput && useCubeMap);
+	GroupNodeOutputRecords<RayMarchRecord> outRecs = RayMarch.GetGroupNodeOutputRecords(recordCount);
 
 	if (needOutput)
 	{
 		if (useCubeMap)
 		{
+			const uint i = WavePrefixCountBits(true);
 			const uint mipCubeMapSize = cubeMapSize >> mipLevel;
-			rayMarchOutRec.Get().DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 8));
-			rayMarchOutRec.Get().VolumeId = volumeId;
-			rayMarchOutRec.Get().MipLevel = mipLevel;
-			rayMarchOutRec.Get().SmpCount = raySampleCount;
-			rayMarchOutRec.Get().MaskBits = maskBits;
-			rayMarchOutRec.Get().VolTexId = volTexId;
+			outRecs[i].DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 8));
+			outRecs[i].VolumeId = volumeId;
+			outRecs[i].MipLevel = mipLevel;
+			outRecs[i].SmpCount = raySampleCount;
+			outRecs[i].MaskBits = maskBits;
+			outRecs[i].VolTexId = volTexId;
 		}
 
 		g_rwVolumes[volumeId] = uint4(mipLevel, raySampleCount, maskBits, volTexId);
 		g_rwVisibleVolumes.Append(volumeId);
 	}
 
-	rayMarchOutRec.OutputComplete();
+	outRecs.OutputComplete();
 }
 
 //--------------------------------------------------------------------------------------
