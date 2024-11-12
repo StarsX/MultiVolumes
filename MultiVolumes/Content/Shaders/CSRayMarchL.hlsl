@@ -77,7 +77,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		for (uint n = 0; n < structInfo.x; ++n)
 		{
 			uint volTexId = GetSourceTextureId(g_roVolumes[n]);
-			volTexId = WaveReadLaneAt(volTexId, 0);
+			volTexId = WaveReadLaneFirst(volTexId);
 
 			const PerObject perObject = g_roPerObject[n];
 			float3 localRayOrigin = mul(rayOrigin, perObject.WorldI);	// World space to volume space
