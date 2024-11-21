@@ -48,6 +48,13 @@ public:
 	virtual void ParseCommandLineArgs(wchar_t* argv[], int argc);
 
 private:
+	enum DeviceType : uint8_t
+	{
+		DEVICE_DISCRETE,
+		DEVICE_UMA,
+		DEVICE_WARP
+	};
+
 	static const auto FrameCount = MultiRayCaster::FrameCount;
 	static_assert(FrameCount == ObjectRenderer::FrameCount, "MultiVolumes::FrameCount should be equal to ObjectRenderer::FrameCount");
 
@@ -88,7 +95,7 @@ private:
 	bool		m_showMesh;
 	bool		m_showFPS;
 	bool		m_isPaused;
-	bool		m_useWarpDevice;
+	DeviceType	m_deviceType;
 	StepTimer	m_timer;
 	
 	// User camera interactions

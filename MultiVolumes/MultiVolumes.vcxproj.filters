@@ -228,6 +228,9 @@
     <FxCompile Include="Content\Shaders\RTCube.hlsl">
       <Filter>Shaders\RayCaster</Filter>
     </FxCompile>
+    <FxCompile Include="Content\Shaders\CSCopyVolumeDrawArg.hlsl">
+      <Filter>Shaders\RayCaster</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="Content\Shaders\LibRayMarch.hlsl">

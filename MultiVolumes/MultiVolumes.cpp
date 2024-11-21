@@ -33,7 +33,7 @@ MultiVolumes::MultiVolumes(uint32_t width, uint32_t height, std::wstring name) :
 	m_showMesh(false),
 	m_showFPS(true),
 	m_isPaused(false),
-	m_useWarpDevice(false),
+	m_deviceType(DEVICE_DISCRETE),
 	m_tracking(false),
 	m_gridSize(128),
 	m_lightGridSize(96),
@@ -93,7 +93,7 @@ void MultiVolumes::LoadPipeline()
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
 		{
 			debugController->EnableDebugLayer();
-			//debugController->SetEnableGPUBasedValidation(TRUE);
+			debugController->SetEnableGPUBasedValidation(TRUE);
 
 			// Enable additional debug layers.
 			dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
@@ -105,21 +105,37 @@ void MultiVolumes::LoadPipeline()
 
 	DXGI_ADAPTER_DESC1 dxgiAdapterDesc;
 	com_ptr<IDXGIAdapter1> dxgiAdapter;
+	const auto useUMA = m_deviceType == DEVICE_UMA;
+	auto checkUMA = true;
 	auto hr = DXGI_ERROR_UNSUPPORTED;
 	//const auto createDeviceFlags = EnableRootDescriptorsInShaderRecords;
 	const auto createDeviceFlags = 0;
-	for (auto i = 0u; hr == DXGI_ERROR_UNSUPPORTED; ++i)
+	for (uint8_t n = 0; n < 2; ++n)
 	{
-		dxgiAdapter = nullptr;
-		ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
-		EnableDirectXRaytracingAndWorkGraph(dxgiAdapter.get());
+		for (auto i = 0u; hr == DXGI_ERROR_UNSUPPORTED; ++i)
+		{
+			dxgiAdapter = nullptr;
+			ThrowIfFailed(m_factory->EnumAdapters1(i, &dxgiAdapter));
+			EnableDirectXRaytracingAndWorkGraph(dxgiAdapter.get());
 
-		dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
-		if (m_useWarpDevice && dxgiAdapterDesc.DeviceId != 0x8c) continue;
+			dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
+			if (m_deviceType == DEVICE_WARP && dxgiAdapterDesc.DeviceId != 0x8c) continue;
 
-		m_device = RayTracing::Device::MakeUnique();
-		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
-		XUSG_N_RETURN(m_device->CreateInterface(createDeviceFlags), ThrowIfFailed(E_FAIL));
+			m_device = RayTracing::Device::MakeUnique();
+			hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
+
+			if (SUCCEEDED(hr) && checkUMA)
+			{
+				D3D12_FEATURE_DATA_ARCHITECTURE feature = {};
+				const auto pDevice = static_cast<ID3D12Device*>(m_device->GetHandle());
+				if (SUCCEEDED(pDevice->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE, &feature, sizeof(feature))))
+					hr = feature.UMA ? (useUMA ? hr : DXGI_ERROR_UNSUPPORTED) : (useUMA ? DXGI_ERROR_UNSUPPORTED : hr);
+			}
+
+			if (SUCCEEDED(hr)) hr = m_device->CreateInterface(createDeviceFlags) ? hr : DXGI_ERROR_UNSUPPORTED;
+		}
+
+		checkUMA = false;
 	}
 
 	if (dxgiAdapterDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
@@ -522,9 +538,10 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 	{
 		if (wcsncmp(argv[i], L"-warp", wcslen(argv[i])) == 0 ||
 			wcsncmp(argv[i], L"/warp", wcslen(argv[i])) == 0)
-		{
-			m_useWarpDevice = true;
-		}
+			m_deviceType = DEVICE_WARP;
+		else if (wcsncmp(argv[i], L"-uma", wcslen(argv[i])) == 0 ||
+			wcsncmp(argv[i], L"/uma", wcslen(argv[i])) == 0)
+			m_deviceType = DEVICE_UMA;
 		else if (wcsncmp(argv[i], L"-mesh", wcslen(argv[i])) == 0 ||
 			wcsncmp(argv[i], L"/mesh", wcslen(argv[i])) == 0)
 		{
@@ -743,7 +760,7 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 	const auto timeStep = static_cast<float>(totalTime - elapsedTime);
 
 	// Compute averages over one second period.
-	if ((totalTime - elapsedTime) >= 1.0f)
+	if (timeStep >= 1.0f)
 	{
 		float fps = static_cast<float>(frameCnt) / timeStep;	// Normalize to an exact second.
 
@@ -776,7 +793,7 @@ double MultiVolumes::CalculateFrameStats(float* pTimeStep)
 		SetCustomWindowText(windowText.str().c_str());
 	}
 
-	if (pTimeStep)* pTimeStep = static_cast<float>(totalTime - previousTime);
+	if (pTimeStep) *pTimeStep = static_cast<float>(totalTime - previousTime);
 	previousTime = totalTime;
 
 	return totalTime;
