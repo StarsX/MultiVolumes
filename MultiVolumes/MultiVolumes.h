@@ -89,15 +89,15 @@ private:
 	uint64_t	m_fenceValues[FrameCount];
 
 	// Application state
+	DeviceType	m_deviceType;
+	StepTimer	m_timer;
 	MultiRayCaster::OITMethod m_oitMethod;
 	bool		m_useWorkGraph;
 	bool		m_animate;
 	bool		m_showMesh;
 	bool		m_showFPS;
 	bool		m_isPaused;
-	DeviceType	m_deviceType;
-	StepTimer	m_timer;
-	
+
 	// User camera interactions
 	bool m_tracking;
 	XMFLOAT2 m_mousePt;
