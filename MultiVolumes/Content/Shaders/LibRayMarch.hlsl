@@ -11,7 +11,7 @@
 
 struct VolumeCullRecord
 {
-	uint BaseVolumeId;
+	uint VolumeCount;
 };
 
 struct RayMarchRecord
@@ -44,9 +44,6 @@ void VolumeCull(uint Gid : SV_GroupID,
 	DispatchNodeInputRecord<VolumeCullRecord> input,
 	[MaxRecords(GROUP_VOLUME_COUNT)] NodeOutput<RayMarchRecord> RayMarch)
 {
-	uint2 structInfo;
-	g_roVolumes.GetDimensions(structInfo.x, structInfo.y);
-
 	uint2 wTid;
 	wTid.x = WaveGetLaneIndex() % 8;
 	wTid.y = WaveGetLaneIndex() / 8;
@@ -57,7 +54,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 	float3 v = 0.0;
 
 	uint volumeVis;
-	if (volumeId < structInfo.x)
+	if (volumeId < input.Get().VolumeCount)
 	{
 		perObject = g_roPerObject[volumeId];
 
@@ -121,7 +118,7 @@ void VolumeCull(uint Gid : SV_GroupID,
 		{
 			const uint i = WavePrefixCountBits(true);
 			const uint mipCubeMapSize = cubeMapSize >> mipLevel;
-			outRecs[i].DispatchGrid = uint2(DIV_UP(mipCubeMapSize, 8), DIV_UP(mipCubeMapSize, 8));
+			outRecs[i].DispatchGrid = DIV_UP(mipCubeMapSize, 8);
 			outRecs[i].VolumeId = volumeId;
 			outRecs[i].MipLevel = mipLevel;
 			outRecs[i].SmpCount = raySampleCount;

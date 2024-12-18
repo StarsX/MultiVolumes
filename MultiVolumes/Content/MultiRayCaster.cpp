@@ -1410,27 +1410,16 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 		m_rayMarchGraph.BackingMemory->GetVirtualAddress(), m_rayMarchGraph.MemRequirments.MaxByteSize);
 
 	// Dispatch work graph
-	static vector<vector<uint8_t>> inputData(m_rayMarchGraph.NumEntrypoints);
-	static vector<NodeCPUInput> nodeInputs(m_rayMarchGraph.NumEntrypoints);
-	for (auto i = 0u; i < m_rayMarchGraph.NumEntrypoints; ++i)
-	{
-		auto& nodeInput = nodeInputs[i];
-		auto& records = inputData[i];
-		nodeInput.EntrypointIndex = m_rayMarchGraph.EntrypointIndices[i];
-		nodeInput.RecordByteStride = m_rayMarchGraph.RecordByteSizes[i];
-		nodeInput.NumRecords = nodeInput.RecordByteStride ? 1 : 0;
-		nodeInput.pRecords = nullptr;
+	assert(m_rayMarchGraph.NumEntrypoints == 1);
+	uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
+	Ultimate::NodeCPUInput nodeInput;
+	nodeInput.EntrypointIndex = 0;
+	nodeInput.RecordByteStride = m_rayMarchGraph.RecordByteSizes[nodeInput.EntrypointIndex];
+	nodeInput.NumRecords = nodeInput.RecordByteStride ? 1 : 0;
+	nodeInput.pRecords = &numVolumes;
+	assert(nodeInput.RecordByteStride * nodeInput.NumRecords == sizeof(uint32_t));
 
-		const auto sizeRecords = nodeInput.RecordByteStride * nodeInput.NumRecords;
-		if (sizeRecords > 0)
-		{
-			records.resize(sizeRecords, 0);
-			// Copy input record data ...
-			nodeInput.pRecords = records.data();
-		}
-	}
-
-	pCommandList->DispatchGraph(m_rayMarchGraph.NumEntrypoints, nodeInputs.data());
+	pCommandList->DispatchGraph(m_rayMarchGraph.NumEntrypoints, &nodeInput);
 
 	numBarriers = m_volumeDrawArg->SetBarrier(barriers.data(), ResourceState::UNORDERED_ACCESS,
 		0, XUSG_BARRIER_ALL_SUBRESOURCES, BarrierFlag::NONE, ResourceState::COMMON);
