@@ -33,6 +33,13 @@ StructuredBuffer<float3> g_roSHCoeffs : register (t1, space2);
 #endif
 
 //--------------------------------------------------------------------------------------
+// Texture sampler
+//--------------------------------------------------------------------------------------
+#ifdef _HAS_DEPTH_MAP_
+SamplerComparisonState g_smpShadow : register (s1);
+#endif
+
+//--------------------------------------------------------------------------------------
 // Sample density field
 //--------------------------------------------------------------------------------------
 min16float4 GetSample(uint volumeId, float3 uvw, float mip = 0.0)
@@ -122,9 +129,9 @@ min16float ShadowTest(float3 pos, Texture2D<float> txDepth)
 	float2 shadowUV = lsPos.xy * 0.5 + 0.5;
 	shadowUV.y = 1.0 - shadowUV.y;
 
-	const float depth = txDepth.SampleLevel(g_smpLinear, shadowUV, 0.0);
+	const float shadow = txDepth.SampleCmpLevelZero(g_smpShadow, shadowUV, lsPos.z - 0.0027);
 
-	return lsPos.z < depth;
+	return min16float(shadow);
 }
 #endif
 

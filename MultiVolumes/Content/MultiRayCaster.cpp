@@ -559,6 +559,12 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		m_descriptorTableLib->GetSampler(SamplerPreset::POINT_CLAMP)
 	};
 
+	const Sampler* pLitSamplers[] =
+	{
+		m_descriptorTableLib->GetSampler(SamplerPreset::LINEAR_CLAMP),
+		m_descriptorTableLib->GetSampler(SamplerPreset::LINEAR_LESS_EQUAL)
+	};
+
 	// Load grid data
 	{
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
@@ -601,7 +607,7 @@ bool MultiRayCaster::createPipelineLayouts(const XUSG::Device* pDevice)
 		pipelineLayout->SetRange(4, DescriptorType::SRV, 1, 0, 2);
 		pipelineLayout->SetConstants(5, 2, 1);
 		pipelineLayout->SetRootSRV(6, 1, 2);
-		pipelineLayout->SetStaticSamplers(pSamplers, 1, 0);
+		pipelineLayout->SetStaticSamplers(pLitSamplers, static_cast<uint32_t>(size(pLitSamplers)), 0);
 		XUSG_X_RETURN(m_pipelineLayouts[RAY_MARCH_L], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
 			PipelineLayoutFlag::NONE, L"LightSpaceRayMarchingLayout"), false);
 	}
@@ -837,7 +843,7 @@ bool MultiRayCaster::createPipelines(Format rtFormat, Format dsFormat)
 		m_rayMarchGraph.Index = state->GetWorkGraphIndex(workGraphName);
 		m_rayMarchGraph.NumNodes = state->GetNumNodes(m_rayMarchGraph.Index);
 		m_rayMarchGraph.NumEntrypoints = state->GetNumEntrypoints(m_rayMarchGraph.Index);
-		m_rayMarchGraph.Identifier = GetProgramIdentifier(m_pipelines[RAY_MARCH_WG], workGraphName);
+		m_rayMarchGraph.Identifier = state->GetProgramIdentifier(workGraphName);
 		state->GetMemoryRequirements(m_rayMarchGraph.Index, &m_rayMarchGraph.MemRequirments);
 		m_rayMarchGraph.EntrypointIndices.resize(m_rayMarchGraph.NumEntrypoints);
 		m_rayMarchGraph.RecordByteSizes.resize(m_rayMarchGraph.NumEntrypoints);
@@ -1411,7 +1417,7 @@ void MultiRayCaster::rayMarchWG(Ultimate::CommandList* pCommandList, uint8_t fra
 
 	// Dispatch work graph
 	assert(m_rayMarchGraph.NumEntrypoints == 1);
-	uint32_t numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
+	const auto numVolumes = static_cast<uint32_t>(m_volumeDescs->GetWidth() / sizeof(VolumeDesc));
 	Ultimate::NodeCPUInput nodeInput;
 	nodeInput.EntrypointIndex = 0;
 	nodeInput.RecordByteStride = m_rayMarchGraph.RecordByteSizes[nodeInput.EntrypointIndex];
