@@ -124,7 +124,7 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 		const float3 uvw = LocalToTex3DSpace(pos);
 
 		// Get a sample
-		min16float4 color = GetSample(volumeInfo.VolTexId, uvw);
+		const min16float4 color = GetSample(volumeInfo.VolTexId, uvw);
 		min16float newStep = stepScale;
 		float dDensity = 1.0;
 
@@ -142,21 +142,12 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 			prevDensity = color.w;
 
 			// Accumulate color
-			const min16float tansl = GetTranslucency(color.w, step);
-			color.w = saturate(color.w * step);
-#ifdef _PRE_MULTIPLIED_
-			color.xyz = GetPremultiplied(color.xyz, step);
-#else
-			//color.xyz *= color.w;
-			color.xyz *= color.w;
-#endif
-			color.xyz *= transm;
-
-			//scatter += color.xyz;
-			scatter += color.xyz * min16float3(light);
+			min16float4 dColor = color * step * ABSORPTION;
+			dColor.xyz *= transm;
+			scatter += dColor.xyz * min16float3(light);
 
 			// Attenuate ray-throughput
-			transm *= 1.0 - tansl;
+			transm *= 1.0 - dColor.w;
 			if (transm < ZERO_THRESHOLD) break;
 		}
 

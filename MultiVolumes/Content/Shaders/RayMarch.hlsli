@@ -46,10 +46,10 @@ min16float4 GetSample(uint volumeId, float3 uvw, float mip = 0.0)
 {
 	min16float4 color = min16float4(g_txGrids[volumeId].SampleLevel(g_smpLinear, uvw, mip));
 	//min16float4 color = min16float4(0.0, 0.5, 1.0, 0.5);
-#ifdef _PRE_MULTIPLIED_
-	color.xyz *= DENSITY_SCALE;
+#ifndef _PRE_MULTIPLIED_
+	color.xyz *= color.w;
 #endif
-	color.w *= DENSITY_SCALE;
+	color *= DENSITY_SCALE;
 
 	return color;
 }
@@ -80,24 +80,6 @@ float3 GetDensityGradient(uint i, float3 uvw)
 
 	return float3(q[1] - q[0], q[3] - q[2], q[5] - q[4]);
 }
-
-//--------------------------------------------------------------------------------------
-// Get translucency
-//--------------------------------------------------------------------------------------
-min16float GetTranslucency(min16float density, min16float step)
-{
-	return saturate(density * step * ABSORPTION);
-}
-
-//--------------------------------------------------------------------------------------
-// Get premultiplied color
-//--------------------------------------------------------------------------------------
-#ifdef _PRE_MULTIPLIED_
-min16float3 GetPremultiplied(min16float3 color, min16float stepScale)
-{
-	return color * saturate(stepScale * ABSORPTION);
-}
-#endif
 
 //--------------------------------------------------------------------------------------
 // Get occluded end point
@@ -242,7 +224,7 @@ void CastLightRay(inout min16float transm, uint volumeId, float3 rayOrigin, floa
 		prevDensity = density;
 
 		// Attenuate ray-throughput along light direction
-		const min16float tansl = GetTranslucency(density, step);
+		const min16float tansl = density * step * ABSORPTION;
 		transm *= 1.0 - tansl;
 		if (transm < ZERO_THRESHOLD) break;
 
