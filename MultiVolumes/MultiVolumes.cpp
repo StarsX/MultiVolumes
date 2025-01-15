@@ -461,7 +461,7 @@ void MultiVolumes::OnKeyUp(uint8_t key)
 		m_animate = !m_animate;
 		break;
 	case 'M':
-		m_showMesh = !m_showMesh;
+		m_showMesh = m_meshFileName.empty() ? false : !m_showMesh;
 		break;
 	case 'O':
 	{
@@ -561,10 +561,14 @@ void MultiVolumes::ParseCommandLineArgs(wchar_t* argv[], int argc)
 				for (size_t j = 0; j < m_meshFileName.size(); ++j)
 					m_meshFileName[j] = static_cast<char>(argv[i][j]);
 			}
-			if (i + 1 < argc) m_meshPosScale.x = stof(argv[++i]);
-			if (i + 1 < argc) m_meshPosScale.y = stof(argv[++i]);
-			if (i + 1 < argc) m_meshPosScale.z = stof(argv[++i]);
-			if (i + 1 < argc) m_meshPosScale.w = stof(argv[++i]);
+			if (!m_meshFileName.empty())
+			{
+				if (i + 1 < argc) m_meshPosScale.x = stof(argv[++i]);
+				if (i + 1 < argc) m_meshPosScale.y = stof(argv[++i]);
+				if (i + 1 < argc) m_meshPosScale.z = stof(argv[++i]);
+				if (i + 1 < argc) m_meshPosScale.w = stof(argv[++i]);
+			}
+			m_showMesh = !m_meshFileName.empty();
 		}
 		else if (wcsncmp(argv[i], L"-gridSize", wcslen(argv[i])) == 0 ||
 			wcsncmp(argv[i], L"/gridSize", wcslen(argv[i])) == 0)

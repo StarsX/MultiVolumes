@@ -8,9 +8,8 @@
 #include "SHIrradiance.hlsli"
 #endif
 
-#define ABSORPTION			0.6
-#define ZERO_THRESHOLD		0.01
-#define ONE_THRESHOLD		0.99
+#define ABSORPTION		0.8
+#define ZERO_THRESHOLD	0.01
 
 //--------------------------------------------------------------------------------------
 // Constants
@@ -44,14 +43,10 @@ SamplerComparisonState g_smpShadow : register (s1);
 //--------------------------------------------------------------------------------------
 min16float4 GetSample(uint volumeId, float3 uvw, float mip = 0.0)
 {
-	min16float4 color = min16float4(g_txGrids[volumeId].SampleLevel(g_smpLinear, uvw, mip));
-	//min16float4 color = min16float4(0.0, 0.5, 1.0, 0.5);
-#ifndef _PRE_MULTIPLIED_
-	color.xyz *= color.w;
-#endif
-	color *= DENSITY_SCALE;
-
-	return color;
+	const float4 color = g_txGrids[volumeId].SampleLevel(g_smpLinear, uvw, mip);
+	//const min16float4 color = min16float4(0.0, 0.5, 1.0, 0.5);
+	
+	return min16float4(color);
 }
 
 //--------------------------------------------------------------------------------------
@@ -184,12 +179,13 @@ float3 LocalToTex3DSpace(float3 pos)
 //--------------------------------------------------------------------------------------
 // Get step
 //--------------------------------------------------------------------------------------
-min16float GetStep(float dDensity, min16float transm, min16float opacity, min16float step)
+min16float GetStep(float dDensity, min16float transm, min16float density, min16float step)
 {
 #if 1
-	step *= min16float(clamp(0.5 / abs(dDensity), 1.0, 1.25));
-	step *= max((1.0 - transm) * 2.0, 1.0);
-	step *= max((1.0 - opacity) * 1.25, 1.0);
+	const min16float factorEv = min16float(min(1.0 / 256.0 / abs(dDensity), 2.0));
+	const min16float factorUi = min(1.0 - density, 1.0);
+	const min16float factorTh = 1.0 - transm;
+	step *= max(1.5 * factorEv * factorUi * factorTh, 1.0);
 #endif
 
 	return step;
@@ -224,8 +220,7 @@ void CastLightRay(inout min16float transm, uint volumeId, float3 rayOrigin, floa
 		prevDensity = density;
 
 		// Attenuate ray-throughput along light direction
-		const min16float tansl = density * step * ABSORPTION;
-		transm *= 1.0 - tansl;
+		transm *= 1.0 - density * ABSORPTION;
 		if (transm < ZERO_THRESHOLD) break;
 
 		// Update position along light ray

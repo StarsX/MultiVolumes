@@ -108,11 +108,8 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 	volumeInfo.VolTexId = WaveReadLaneAt(volumeInfo.VolTexId, 0);
 
-	// Transmittance
-	min16float transm = 1.0;
-
-	// In-scattered radiance
-	min16float3 scatter = 0.0;
+	// In-scattered radiance with inverted transmittance
+	min16float4 scatter = 0.0;
 
 	float t = 0.0;
 	min16float step = stepScale;
@@ -124,30 +121,28 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 		const float3 uvw = LocalToTex3DSpace(pos);
 
 		// Get a sample
-		const min16float4 color = GetSample(volumeInfo.VolTexId, uvw);
+		min16float4 color = GetSample(volumeInfo.VolTexId, uvw);
 		min16float newStep = stepScale;
-		float dDensity = 1.0;
 
 		// Skip empty space
 		if (color.w > ZERO_THRESHOLD)
 		{
-			// Sample light
-			const float3 light = GetLight(volumeId, pos);
+			const float3 light = GetLight(volumeId, pos); // Sample light
 
 			// Update step
-			dDensity = color.w - prevDensity;
-			const min16float opacity = saturate(color.w * step);
-			newStep = GetStep(dDensity, transm, opacity, stepScale);
+			const min16float transm = 1.0 - scatter.w;
+			const float dDensity = color.w - prevDensity;
+			newStep = GetStep(dDensity, transm, color.w, stepScale);
 			step = (step + newStep) * 0.5;
 			prevDensity = color.w;
 
 			// Accumulate color
-			min16float4 dColor = color * step * ABSORPTION;
-			dColor.xyz *= transm;
-			scatter += dColor.xyz * min16float3(light);
+#ifndef _PRE_MULTIPLIED_
+			color.xyz *= color.w;
+#endif
+			color.xyz *= min16float3(light);
+			scatter += color * ABSORPTION * transm;
 
-			// Attenuate ray-throughput
-			transm *= 1.0 - dColor.w;
 			if (transm < ZERO_THRESHOLD) break;
 		}
 
@@ -159,5 +154,5 @@ void main(uint2 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint3
 
 	scatter.xyz /= 2.0 * PI;
 
-	g_rwCubeMaps[uavIdx][index] = float4(scatter, 1.0 - transm);
+	g_rwCubeMaps[uavIdx][index] = scatter;
 }
